@@ -29,6 +29,7 @@ class SelectionMenu extends SelectionMenuService {
     this.singleColumn = false,
     this.menuHeight = 300,
     this.menuWidth = 300,
+    this.menuDirection = TextDirection.ltr,
   });
 
   final BuildContext context;
@@ -39,6 +40,15 @@ class SelectionMenu extends SelectionMenuService {
   final bool singleColumn;
   final double menuHeight;
   final double menuWidth;
+
+  /// The reading direction of the block the menu is being opened from.
+  ///
+  /// Controls which side the menu opens/grows toward: [TextDirection.ltr]
+  /// anchors from the selection's right edge and grows rightward (falling
+  /// back to the left if there isn't room); [TextDirection.rtl] mirrors
+  /// this, anchoring from the selection's left edge and growing leftward.
+  /// Callers that don't pass this get the original LTR-only behavior.
+  final TextDirection menuDirection;
 
   @override
   final SelectionMenuStyle style;
@@ -112,30 +122,39 @@ class SelectionMenu extends SelectionMenuService {
                   bottom: bottom,
                   left: left,
                   right: right,
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: SelectionMenuWidget(
-                      selectionMenuStyle: style,
-                      singleColumn: singleColumn,
-                      items: selectionMenuItems
-                        ..forEach((element) {
-                          element.deleteSlash = deleteSlashByDefault;
-                          element.deleteKeywords = deleteKeywordsByDefault;
-                          element.onSelected = () {
-                            dismiss();
-                          };
-                        }),
-                      maxItemInRow: 5,
-                      editorState: editorState,
-                      itemCountFilter: itemCountFilter,
-                      menuService: this,
-                      onExit: () {
-                        dismiss();
-                      },
-                      onSelectionUpdate: () {
-                        _selectionUpdateByInner = true;
-                      },
-                      deleteSlashByDefault: deleteSlashByDefault,
+                  // Give the scroll view an explicit width. Without it, a
+                  // Positioned pinned only by `right` (the RTL "grow left"
+                  // case) doesn't reliably size/grow leftward from that
+                  // anchor — this path was rarely exercised before RTL
+                  // support, since the original LTR-only logic almost
+                  // always took the `left`-pinned "grow right" branch.
+                  child: SizedBox(
+                    width: menuWidth,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: SelectionMenuWidget(
+                        selectionMenuStyle: style,
+                        singleColumn: singleColumn,
+                        items: selectionMenuItems
+                          ..forEach((element) {
+                            element.deleteSlash = deleteSlashByDefault;
+                            element.deleteKeywords = deleteKeywordsByDefault;
+                            element.onSelected = () {
+                              dismiss();
+                            };
+                          }),
+                        maxItemInRow: 5,
+                        editorState: editorState,
+                        itemCountFilter: itemCountFilter,
+                        menuService: this,
+                        onExit: () {
+                          dismiss();
+                        },
+                        onSelectionUpdate: () {
+                          _selectionUpdateByInner = true;
+                        },
+                        deleteSlashByDefault: deleteSlashByDefault,
+                      ),
                     ),
                   ),
                 ),
@@ -217,11 +236,25 @@ class SelectionMenu extends SelectionMenuService {
     final editorHeight = editorState.renderBox!.size.height;
     final editorWidth = editorState.renderBox!.size.width;
 
+    final isRTL = menuDirection == TextDirection.rtl;
+    // In an RTL block the menu should open toward the reading direction
+    // (left), so anchor from the selection's left edge instead of its
+    // right edge. Everything below mirrors the LTR math horizontally.
+    final bottomAnchor = isRTL ? rect.bottomLeft : rect.bottomRight;
+    final topAnchor = isRTL ? rect.topLeft : rect.topRight;
+
     // show below default
+    //
+    // Note: for RTL we still use the Left-family alignments here (not
+    // Right), even though the anchor is the selection's LEFT edge. The
+    // Alignment.topRight/bottomRight ("pinned by `right`") code path
+    // below turned out not to render correctly in practice (see the RTL
+    // support spec's session log) — rather than depend on it, the RTL
+    // branch further down computes an explicit `left` value for growing
+    // leftward, reusing the same Left-pinned mechanism already proven
+    // correct for every LTR block.
     _alignment = Alignment.topLeft;
-    final bottomRight = rect.bottomRight;
-    final topRight = rect.topRight;
-    var offset = bottomRight + menuOffset;
+    var offset = bottomAnchor + menuOffset;
     _offset = Offset(
       offset.dx,
       offset.dy,
@@ -229,7 +262,7 @@ class SelectionMenu extends SelectionMenuService {
 
     // show above
     if (offset.dy + menuHeight >= editorOffset.dy + editorHeight) {
-      offset = topRight - menuOffset;
+      offset = topAnchor - menuOffset;
       _alignment = Alignment.bottomLeft;
 
       _offset = Offset(
@@ -238,22 +271,45 @@ class SelectionMenu extends SelectionMenuService {
       );
     }
 
-    // show on right
-    if (_offset.dx + menuWidth < editorOffset.dx + editorWidth) {
-      _offset = Offset(
-        _offset.dx,
-        _offset.dy,
-      );
-    } else if (offset.dx - editorOffset.dx > menuWidth) {
-      // show on left
-      _alignment = _alignment == Alignment.topLeft
-          ? Alignment.topRight
-          : Alignment.bottomRight;
+    if (!isRTL) {
+      // show on right
+      if (_offset.dx + menuWidth < editorOffset.dx + editorWidth) {
+        _offset = Offset(
+          _offset.dx,
+          _offset.dy,
+        );
+      } else if (offset.dx - editorOffset.dx > menuWidth) {
+        // show on left
+        _alignment = _alignment == Alignment.topLeft
+            ? Alignment.topRight
+            : Alignment.bottomRight;
 
-      _offset = Offset(
-        editorWidth - _offset.dx + editorOffset.dx,
-        _offset.dy,
-      );
+        _offset = Offset(
+          editorWidth - _offset.dx + editorOffset.dx,
+          _offset.dy,
+        );
+      }
+      return;
+    }
+
+    // RTL: default direction is "show on left" (grow toward the left from
+    // the anchor). _offset.dx currently holds the anchor's raw global X,
+    // which is where the menu's RIGHT edge should land — so growing left
+    // means its LEFT edge (the value Alignment.topLeft/bottomLeft's `left`
+    // expects) sits menuWidth further back.
+    final rightEdgeX = _offset.dx;
+    final fitsGrowingLeft = rightEdgeX - menuWidth > editorOffset.dx;
+    if (fitsGrowingLeft) {
+      _offset = Offset(rightEdgeX - menuWidth, _offset.dy);
+    } else if ((editorOffset.dx + editorWidth) - rightEdgeX > menuWidth) {
+      // not enough room to the left; flip to grow right instead, same as
+      // the LTR default (anchor becomes the menu's left edge).
+      _offset = Offset(rightEdgeX, _offset.dy);
+    } else {
+      // neither direction cleanly fits (very narrow editor) — fall back to
+      // the default growing-left placement, matching the LTR branch's
+      // equivalent fallback.
+      _offset = Offset(rightEdgeX - menuWidth, _offset.dy);
     }
   }
 }
