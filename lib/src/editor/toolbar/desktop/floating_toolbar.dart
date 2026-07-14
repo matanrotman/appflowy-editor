@@ -124,7 +124,7 @@ class _FloatingToolbarState extends State<FloatingToolbar>
   void didChangeMetrics() {
     super.didChangeMetrics();
     hasMetricsChanged = true;
-    _showAfterDelay(isMetricsChanged: true);
+    _showAfterDelay(_selectionDebounceKey, isMetricsChanged: true);
   }
 
   @override
@@ -147,6 +147,7 @@ class _FloatingToolbarState extends State<FloatingToolbar>
     } else {
       // uses debounce to avoid the computing the rects too frequently.
       _showAfterDelay(
+        _selectionDebounceKey,
         duration: const Duration(milliseconds: 200),
         isMetricsChanged: hasMetricsChanged,
       );
@@ -157,27 +158,51 @@ class _FloatingToolbarState extends State<FloatingToolbar>
   void _onScrollPositionChanged() {
     _clear();
 
-    // TODO: optimize the toolbar showing logic, making it more smooth.
-    // A quick idea: based on the scroll controller's offset to display the toolbar.
-    _showAfterDelay();
+    // Auto-scroll (dragging a selection past the viewport edge) fires this
+    // on every frame via its own ticker, independent of pointer events.
+    // Reading selection/layout geometry synchronously here -- inside the
+    // same call stack as the scroll-offset change -- risks reading
+    // whatever layout was left over from the PREVIOUS frame, since this
+    // frame's layout pass (which actually repositions the scrolled
+    // content) hasn't run yet. Deferring to a post-frame callback ensures
+    // _showToolbar only reads geometry after this frame has genuinely
+    // settled.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // TODO: optimize the toolbar showing logic, making it more smooth.
+      // A quick idea: based on the scroll controller's offset to display the toolbar.
+      _showAfterDelay(_scrollDebounceKey);
+    });
   }
 
-  final String _debounceKey = 'show the toolbar';
+  // Separate keys for the selection- and scroll-triggered show requests:
+  // sharing one key meant a scroll tick (previously fired synchronously,
+  // via Duration.zero) could silently cancel a pending, more-authoritative
+  // 200ms selection-driven show, or vice versa -- whichever fired last on
+  // the shared key won, with nothing to reconcile them afterward. During
+  // any drag that triggers auto-scroll (dragging a selection near the
+  // viewport edge -- exactly when the toolbar needs to track the true,
+  // possibly-off-screen-until-scrolled selection extent), both kinds of
+  // event interleave unpredictably.
+  final String _selectionDebounceKey = 'show the toolbar - selection';
+  final String _scrollDebounceKey = 'show the toolbar - scroll';
 
   void _clear() {
-    Debounce.cancel(_debounceKey);
+    Debounce.cancel(_selectionDebounceKey);
+    Debounce.cancel(_scrollDebounceKey);
 
     _toolbarContainer?.remove();
     _toolbarContainer = null;
   }
 
-  void _showAfterDelay({
+  void _showAfterDelay(
+    String debounceKey, {
     Duration duration = Duration.zero,
     bool isMetricsChanged = false,
   }) {
     // uses debounce to avoid the computing the rects too frequently.
     Debounce.debounce(
-      _debounceKey,
+      debounceKey,
       duration,
       () {
         _clear(); // clear the previous toolbar.
