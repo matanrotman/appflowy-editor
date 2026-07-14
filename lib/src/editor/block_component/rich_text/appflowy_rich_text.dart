@@ -209,6 +209,18 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     // end of the run BEFORE this offset, which is the expected placement
     // for a cursor that just typed or moved past a character, rather than
     // splitting through the middle of the next run's first glyph.
+    //
+    // NOT SUFFICIENT (found 2026-07-15, live in the real app): a long
+    // Hebrew paragraph with several embedded English/number runs still
+    // shows the caret rendering mid-token — e.g. inside a date like
+    // "20.4.26" partway through a sentence like "...talking about -
+    // 20.4.26, למשל...". The test added this same session
+    // (test/new/block_component/rich_text/caret_bidi_test.dart) only
+    // covers a single two-run boundary (one Hebrew word directly followed
+    // by one Latin word) and passes -- it does not reproduce this. Next
+    // session: add a test using the exact multi-run sentence above (or
+    // close to it) before touching this code again, since the existing
+    // test's green result was misleadingly reassuring.
     final textPosition = TextPosition(
       offset: position.offset,
       affinity: TextAffinity.upstream,
