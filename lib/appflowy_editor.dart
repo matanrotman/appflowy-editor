@@ -3,6 +3,7 @@ library;
 
 // core part, including document, node, selection, etc.
 export 'src/core/core.dart';
+export 'src/editor/block_component/base_component/text_direction_mixin.dart';
 export 'src/editor/block_component/rich_text/appflowy_rich_text.dart';
 export 'src/editor/block_component/rich_text/appflowy_rich_text_keys.dart';
 export 'src/editor/block_component/rich_text/default_selectable_mixin.dart';

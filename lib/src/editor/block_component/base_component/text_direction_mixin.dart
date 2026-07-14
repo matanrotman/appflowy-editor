@@ -120,7 +120,25 @@ TextDirection? _getDirectionFromNode(Node node, String? defaultTextDirection) {
         : null,
   );
   if (nodeDirection == blockComponentTextDirectionAuto) {
-    return node.selectable?.textDirection();
+    // Determine straight from this node's own text rather than
+    // `node.selectable?.textDirection()` — that getter (via
+    // DefaultSelectableMixin) silently falls back to LTR whenever this
+    // node's rich-text widget hasn't resolved a mounted state yet, which
+    // happens transiently and often: right after this same node is
+    // inserted/split, or while a sibling node's widget is being
+    // rebuilt/recycled. Computing directly from the text has no such
+    // dependency on live widget state.
+    final text = node.delta?.toPlainText();
+    if (text != null && text.isNotEmpty) {
+      final determined = determineTextDirection(text);
+      if (determined != null) {
+        return determined;
+      }
+    }
+    // No strongly-directional text of its own (empty or neutral-only) —
+    // keep walking backwards through this node's own previous/parent
+    // chain instead of stopping here.
+    return _getDirectionFromPreviousOrParentNode(node, defaultTextDirection);
   } else {
     return nodeDirection?.toTextDirection();
   }

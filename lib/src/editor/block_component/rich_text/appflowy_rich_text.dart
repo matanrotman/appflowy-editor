@@ -203,7 +203,16 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       return null;
     }
 
-    final textPosition = TextPosition(offset: position.offset);
+    // Upstream (not Flutter's default of downstream): at a boundary between
+    // an RTL run and an embedded LTR run, a single logical offset can map
+    // to two different visual x-positions. Upstream ties the caret to the
+    // end of the run BEFORE this offset, which is the expected placement
+    // for a cursor that just typed or moved past a character, rather than
+    // splitting through the middle of the next run's first glyph.
+    final textPosition = TextPosition(
+      offset: position.offset,
+      affinity: TextAffinity.upstream,
+    );
     double? placeholderCursorHeight =
         _placeholderRenderParagraph?.getFullHeightForCaret(textPosition);
     Offset? placeholderCursorOffset =
@@ -213,12 +222,19 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
             ) ??
             Offset.zero;
     if (textDirection() == TextDirection.rtl) {
-      if (widget.placeholderText.trim().isNotEmpty) {
-        placeholderCursorOffset = placeholderCursorOffset.translate(
-          _placeholderRenderParagraph?.size.width ?? 0,
-          0,
-        );
-      }
+      // Pin the caret to the right edge of the block's actual content
+      // width for an empty RTL line, not the placeholder text's own
+      // (often tiny, e.g. a single space) intrinsic width. Gating this on
+      // `placeholderText.trim().isNotEmpty` skipped the correction
+      // entirely for the default single-space placeholder, which is the
+      // common case for any empty block that isn't the very first one.
+      final contentWidth = _renderParagraph?.size.width ??
+          _placeholderRenderParagraph?.size.width ??
+          0;
+      placeholderCursorOffset = placeholderCursorOffset.translate(
+        contentWidth,
+        0,
+      );
     }
 
     double? cursorHeight =

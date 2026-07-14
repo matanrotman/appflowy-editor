@@ -198,6 +198,7 @@ class _HeadingBlockComponentWidgetState
         node: node,
         actionBuilder: widget.actionBuilder!,
         actionTrailingBuilder: widget.actionTrailingBuilder,
+        textDirection: textDirection,
         child: child,
       );
     }

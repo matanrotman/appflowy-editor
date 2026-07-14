@@ -181,6 +181,7 @@ class _QuoteBlockComponentWidgetState extends State<QuoteBlockComponentWidget>
         node: node,
         actionBuilder: widget.actionBuilder!,
         actionTrailingBuilder: widget.actionTrailingBuilder,
+        textDirection: textDirection,
         child: child,
       );
     }

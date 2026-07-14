@@ -19,12 +19,23 @@ class BlockComponentActionWrapper extends StatefulWidget {
     required this.child,
     required this.actionBuilder,
     this.actionTrailingBuilder,
+    this.textDirection,
   });
 
   final Node node;
   final Widget child;
   final BlockComponentActionBuilder actionBuilder;
   final BlockComponentActionTrailingBuilder? actionTrailingBuilder;
+
+  /// The block's own reading direction (e.g. from
+  /// [BlockComponentTextDirectionMixin.calculateTextDirection]).
+  ///
+  /// The action row (drag handle, "+") otherwise falls back to the
+  /// ambient [Directionality], which reflects the app's interface
+  /// language rather than this specific block's content — so an RTL
+  /// block inside an LTR-interface app would still show its hover
+  /// controls on the left. Passing this lets the row mirror per-block.
+  final TextDirection? textDirection;
 
   @override
   State<BlockComponentActionWrapper> createState() =>
@@ -71,32 +82,36 @@ class _BlockComponentActionWrapperState
 
   @override
   Widget build(BuildContext context) {
+    final row = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      textDirection: widget.textDirection,
+      children: [
+        ValueListenableBuilder<bool>(
+          valueListenable: showActionsNotifier,
+          builder: (context, value, child) => BlockComponentActionContainer(
+            node: widget.node,
+            showActions: value,
+            actionBuilder: (context) => widget.actionBuilder(context, this),
+          ),
+        ),
+        if (widget.actionTrailingBuilder != null)
+          widget.actionTrailingBuilder!(
+            context,
+            this,
+          ),
+        Expanded(child: widget.child),
+      ],
+    );
     return MouseRegion(
       onEnter: (_) => showActionsNotifier.value = true,
       onExit: (_) => showActionsNotifier.value = alwaysShowActions || false,
       hitTestBehavior: HitTestBehavior.opaque,
       opaque: false,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ValueListenableBuilder<bool>(
-            valueListenable: showActionsNotifier,
-            builder: (context, value, child) => BlockComponentActionContainer(
-              node: widget.node,
-              showActions: value,
-              actionBuilder: (context) => widget.actionBuilder(context, this),
-            ),
-          ),
-          if (widget.actionTrailingBuilder != null)
-            widget.actionTrailingBuilder!(
-              context,
-              this,
-            ),
-          Expanded(child: widget.child),
-        ],
-      ),
+      child: widget.textDirection != null
+          ? Directionality(textDirection: widget.textDirection!, child: row)
+          : row,
     );
   }
 }

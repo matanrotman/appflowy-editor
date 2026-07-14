@@ -187,6 +187,7 @@ class _BulletedListBlockComponentWidgetState
         node: node,
         actionBuilder: widget.actionBuilder!,
         actionTrailingBuilder: widget.actionTrailingBuilder,
+        textDirection: textDirection,
         child: child,
       );
     }
