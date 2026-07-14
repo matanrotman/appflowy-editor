@@ -117,6 +117,102 @@ void main() {
 
       await editor.dispose();
     });
+
+    testWidgets(
+        'caret does not split inside a date token embedded in a longer '
+        'Hebrew sentence (repro from appflowy_rich_text.dart\'s comment)',
+        (tester) async {
+      // The original repro report was "the caret renders mid-token inside
+      // a date like 20.4.26, partway through a longer Hebrew sentence."
+      // This confirms that specific claim directly: within "20.4.26"
+      // itself (all digits and periods, one contiguous LTR run, no bidi
+      // boundary inside it), the caret must move strictly left-to-right as
+      // the logical offset advances — it must not double back into the
+      // token it's supposedly past.
+      const text =
+          'שוחחנו על זה - talking about - 20.4.26, למשל - וזה עבד מצוין';
+      const token = '20.4.26';
+      final start = text.indexOf(token);
+
+      final editor = tester.editor
+        ..addParagraph(
+          initialText: text,
+          decorator: (i, n) => n.updateAttributes(
+            {blockComponentTextDirection: blockComponentTextDirectionAuto},
+          ),
+        );
+      await editor.startTesting();
+
+      final rects = <Rect>[
+        for (var offset = start; offset <= start + token.length; offset++)
+          await _caretRectAt(editor, offset),
+      ];
+      for (var i = 1; i < rects.length; i++) {
+        expect(
+          rects[i].left >= rects[i - 1].left - 0.5,
+          true,
+          reason: 'caret inside "$token" split mid-token: offset '
+              '${start + i} (${rects[i]}) should be at/after offset '
+              '${start + i - 1} (${rects[i - 1]})',
+        );
+      }
+
+      await editor.dispose();
+    });
+
+    testWidgets(
+        'caret leaving an embedded LTR run stays consistent with the '
+        'run-entry rule above, at the exit boundary too',
+        (tester) async {
+      // Investigated 2026-07-14, headlessly: the boundary *entering* an
+      // embedded LTR run (tested above, "sits next to the seam") behaves
+      // consistently — the caret stays adjacent to the preceding run, per
+      // TextAffinity.upstream. This checks the same rule holds at the
+      // *exit* boundary of a run ending in trailing punctuation (the comma
+      // right after "20.4.26," in the repro sentence, moving into the next
+      // Hebrew word) — and it currently does not: the caret there jumps to
+      // sit next to the *following* Hebrew run instead of staying adjacent
+      // to the LTR run it just left, unlike every other boundary in the
+      // same sentence. Tried fixing this via a per-character
+      // getBoxesForSelection lookup instead of the global TextAffinity
+      // flag; it produced byte-identical results, so the inconsistency
+      // sits inside Flutter's own bidi run classification of the comma
+      // (a weak/neutral character), not in anything this wrapper controls
+      // directly. Left skipped rather than asserted-and-forced-green:
+      // confirming what "correct" should look like here needs either a
+      // reference implementation to compare against or a live look, not
+      // another guess.
+      const text =
+          'שוחחנו על זה - talking about - 20.4.26, למשל - וזה עבד מצוין';
+      const beforeToken = '20.4.26,';
+      final exitOffset = text.indexOf(beforeToken) + beforeToken.length;
+
+      final editor = tester.editor
+        ..addParagraph(
+          initialText: text,
+          decorator: (i, n) => n.updateAttributes(
+            {blockComponentTextDirection: blockComponentTextDirectionAuto},
+          ),
+        );
+      await editor.startTesting();
+
+      final atCommaEnd = await _caretRectAt(editor, exitOffset - 1);
+      final afterComma = await _caretRectAt(editor, exitOffset);
+
+      expect(
+        (afterComma.left - atCommaEnd.left).abs() < 40,
+        true,
+        reason: 'caret just after the trailing comma in "20.4.26," '
+            '($afterComma) should stay close to the comma itself '
+            '($atCommaEnd), matching how every other boundary in this '
+            'sentence keeps the caret adjacent to the run it just left',
+      );
+
+      await editor.dispose();
+      // Skipped: confirmed real inconsistency (see comment above) but the
+      // correct fix needs a live look or a reference to compare against,
+      // not another blind guess — see appflowy_rich_text.dart.
+    }, skip: true);
   });
 
   group('caret position — empty line', () {

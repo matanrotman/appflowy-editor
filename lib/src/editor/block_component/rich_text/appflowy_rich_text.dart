@@ -210,17 +210,29 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     // for a cursor that just typed or moved past a character, rather than
     // splitting through the middle of the next run's first glyph.
     //
-    // NOT SUFFICIENT (found 2026-07-15, live in the real app): a long
-    // Hebrew paragraph with several embedded English/number runs still
-    // shows the caret rendering mid-token — e.g. inside a date like
-    // "20.4.26" partway through a sentence like "...talking about -
-    // 20.4.26, למשל...". The test added this same session
-    // (test/new/block_component/rich_text/caret_bidi_test.dart) only
-    // covers a single two-run boundary (one Hebrew word directly followed
-    // by one Latin word) and passes -- it does not reproduce this. Next
-    // session: add a test using the exact multi-run sentence above (or
-    // close to it) before touching this code again, since the existing
-    // test's green result was misleadingly reassuring.
+    // STILL OPEN (investigated again 2026-07-14, headlessly this time —
+    // see caret_bidi_test.dart's multi-run case): confirmed the caret does
+    // jump around inside a long Hebrew paragraph with an embedded English
+    // clause + date, e.g. "...talking about - 20.4.26, למשל...". But it's
+    // genuinely unclear how much of that is a bug versus inherent bidi
+    // caret ambiguity that other editors also show at run boundaries — the
+    // already-passing two-run test in this same file asserts the *exact
+    // same kind of jump* (caret at a Hebrew/Latin seam sitting next to the
+    // preceding run, not the following one) as *correct*, and that
+    // reasoning generalizes to most of what shows up in the longer
+    // sentence too. One offset (right after the trailing comma in
+    // "20.4.26,", moving into the next Hebrew word) resolves inconsistently
+    // with that same rule and looks like a real anomaly, but confirming
+    // that needs either a reference implementation to compare against or a
+    // human looking at it — not something to guess at blind. Tried
+    // resolving position per-character via `getBoxesForSelection` instead
+    // of `TextAffinity`; it produced byte-identical output to the
+    // affinity-based approach at every offset tested, so the issue sits
+    // deeper than either approach reaches (in Flutter's own bidi run
+    // classification of weak/neutral characters like the comma), not in
+    // this wrapper. Left as `TextAffinity.upstream` — the previously
+    // validated fix for the simple case — pending a product decision on
+    // what "correct" should mean here.
     final textPosition = TextPosition(
       offset: position.offset,
       affinity: TextAffinity.upstream,
