@@ -11,10 +11,17 @@ import '../../../test_helper.dart';
 // tree (nothing in BlockComponentActionWrapper's Row swallows/collapses
 // it) — it does not, and can't, prove any particular pixel value "looks
 // right"; that's a human visual judgment made separately.
+//
+// _productionGapWidth mirrors the SizedBox width AppFlowy's app repo
+// actually passes via actionTrailingBuilder (editor_configuration.dart,
+// _customBlockOptionActions) — this is a separate Dart package, so it
+// can't import that constant directly; keep this literal in sync by hand
+// if that value changes again.
 
 const _actionKey = Key('action');
 const _gapKey = Key('gap');
 const _childKey = Key('child');
+const _productionGapWidth = 30.0;
 
 Widget _buildWrapper({required double gapWidth, TextDirection? textDirection}) {
   return MaterialApp(
@@ -47,7 +54,9 @@ void main() {
     testWidgets(
         'actionTrailingBuilder width becomes a real, undiminished gap (LTR)',
         (tester) async {
-      await tester.buildAndPump(_buildWrapper(gapWidth: 12));
+      await tester.buildAndPump(
+        _buildWrapper(gapWidth: _productionGapWidth),
+      );
 
       final actionRight = tester.getTopRight(find.byKey(_actionKey)).dx;
       final gapLeft = tester.getTopLeft(find.byKey(_gapKey)).dx;
@@ -61,7 +70,7 @@ void main() {
       );
       expect(
         gapRight - gapLeft,
-        closeTo(12, 0.5),
+        closeTo(_productionGapWidth, 0.5),
         reason: 'the gap widget itself should render at its full width',
       );
       expect(
@@ -91,7 +100,10 @@ void main() {
         'actionTrailingBuilder width becomes a real, undiminished gap (RTL)',
         (tester) async {
       await tester.buildAndPump(
-        _buildWrapper(gapWidth: 12, textDirection: TextDirection.rtl),
+        _buildWrapper(
+          gapWidth: _productionGapWidth,
+          textDirection: TextDirection.rtl,
+        ),
       );
 
       // In RTL the row mirrors: icons on the right, text on the left, gap
@@ -108,7 +120,7 @@ void main() {
       );
       expect(
         gapRight - gapLeft,
-        closeTo(12, 0.5),
+        closeTo(_productionGapWidth, 0.5),
         reason: 'the gap widget itself should render at its full width',
       );
       expect(
