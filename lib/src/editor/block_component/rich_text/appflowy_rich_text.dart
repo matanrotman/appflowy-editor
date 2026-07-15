@@ -245,59 +245,37 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
               Rect.zero,
             ) ??
             Offset.zero;
-    if (textDirection() == TextDirection.rtl) {
-      // Pin the caret to the right edge of the block's actual content
-      // width for an empty RTL line, not the placeholder text's own
-      // (often tiny, e.g. a single space) intrinsic width. Gating this on
-      // `placeholderText.trim().isNotEmpty` skipped the correction
-      // entirely for the default single-space placeholder, which is the
-      // common case for any empty block that isn't the very first one.
+    if (textDirection() == TextDirection.rtl && delta?.isEmpty == true) {
+      // Empty RTL line: pin the caret to the line's RTL start — the RIGHT
+      // edge of the placeholder paragraph — where Hebrew/Arabic typing
+      // actually begins.
       //
-      // STILL BROKEN (confirmed live 2026-07-14, "creating a new line has
-      // a very far cursor"). Root cause of the no-op: `??` only falls
-      // through on null, and `_renderParagraph?.size.width` is a real,
-      // non-null 0.0 for empty text -- so contentWidth is always exactly
-      // 0 and this whole correction has been a permanent no-op. Tried
-      // fixing this two ways this session, both reverted after breaking
-      // pre-existing tests or producing unstable results:
-      // (1) A LayoutBuilder-captured `constraints.maxWidth` as
-      // contentWidth: correct for a plain paragraph's Column-based
-      // full-width layout, but a heading's Row+Flexible+MainAxisSize.min
-      // layout resolves _renderParagraph's own local origin completely
-      // differently, so the same arithmetic overshot by ~600px there.
-      // (2) Deriving the true content-area right edge from this widget's
-      // own outer RenderBox (context.findRenderObject()), which DID give
-      // a consistent right edge (confirmed identical, 700px, across both
-      // the paragraph and heading layouts) -- but then broke the
-      // pre-existing "caret near where typing lands" tests instead: after
-      // actually typing a character into the (now non-empty) RTL line,
-      // the real typed-character position landed at the *left* side of
-      // the content area (~100px), not the right (~700px) my fix computed
-      // -- i.e. once real (non-empty) RTL text is entered, its rendered
-      // position doesn't clearly match "the right edge of the content
-      // area" either, at least not in this test environment. Unclear
-      // whether that's a genuine further bug, a test-environment
-      // Hebrew-glyph-shaping quirk (Flutter's test font may not shape/
-      // position RTL text the way a real font does), or a wrong
-      // assumption about what "correct" should look like here.
+      // Why this is needed: when the document default direction is RTL, an
+      // empty line shows the LTR English hint ("Type '/' to insert a
+      // block, or start typing"). That hint is a left-to-right run, so its
+      // logical offset 0 resolves to the run's LEFT end. getOffsetForCaret
+      // therefore returns the far-left of the (right-aligned) placeholder,
+      // stranding the caret a whole placeholder-width to the left of where
+      // the user starts typing — the reported "creating a new line has a
+      // very far cursor" bug.
       //
-      // Next session: needs a live look at the ACTUAL reported repro
-      // ("creating a new line", i.e. pressing Enter to split off a new
-      // paragraph) before attempting another fix -- both attempts here
-      // were verified only headlessly and both had a real, hidden flaw
-      // that only surfaced once measured against a different scenario
-      // (a different block type; a real typed character) than the one
-      // each attempt was designed against. That pattern -- a fix that
-      // looks solid against the specific case it was built for but wrong
-      // against a case one step to the side -- is exactly what needs a
-      // live source of truth here, not another isolated guess.
-      final contentWidth = _renderParagraph?.size.width ??
-          _placeholderRenderParagraph?.size.width ??
-          0;
-      placeholderCursorOffset = placeholderCursorOffset.translate(
-        contentWidth,
-        0,
-      );
+      // The placeholder paragraph is right-aligned within the block, so
+      // its own laid-out width is exactly the offset from the caret's
+      // current (left) position to the RTL start (right). SET the caret's
+      // dx to that width. Verified live on the real macOS app (the
+      // headless test font + the shrink-wrapped block geometry make
+      // selectionRects() mis-report this, so trust the rendered Cursor /
+      // a live look — see document_rtl_empty_caret_test.dart).
+      //
+      // History: the previous code tried to shift by a "contentWidth" but
+      // read `_renderParagraph?.size.width` first, which is a real,
+      // non-null 0.0 for empty text, so the `??` never reached the
+      // placeholder width and the whole correction was a permanent no-op.
+      final placeholderWidth = _placeholderRenderParagraph?.size.width;
+      if (placeholderWidth != null) {
+        placeholderCursorOffset =
+            Offset(placeholderWidth, placeholderCursorOffset.dy);
+      }
     }
 
     double? cursorHeight =
@@ -467,9 +445,15 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     textSpan = adjustTextSpan(textSpan);
     final delta = widget.node.delta;
     if (delta != null && delta.isNotEmpty) {
-      textSpan = textSpan.updateTextStyle(
-        const TextStyle(color: Colors.transparent),
-      );
+      // The line has real text, so the placeholder isn't shown. Collapse it to
+      // an empty span (keeping the style for line height) instead of merely
+      // making it transparent: a full-width invisible placeholder still
+      // inflates the block to its own width, which on a right-aligned RTL
+      // block pushes the real text a placeholder-width LEFT of the content-area
+      // right edge — the "text jumps left the moment you type" bug. An empty
+      // span keeps the placeholder render object (and its height) but takes no
+      // width, so the RTL text stays pinned to the right.
+      textSpan = TextSpan(text: '', style: textSpan.style);
     }
     return RichText(
       key: placeholderTextKey,
