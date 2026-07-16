@@ -146,9 +146,12 @@ class _FloatingToolbarState extends State<FloatingToolbar>
       _clear();
     } else {
       // uses debounce to avoid the computing the rects too frequently.
+      // 400ms (was 200ms, 2026-07-16): a short delay reads as flicker --
+      // the toolbar popping up mid-interaction, before the user has
+      // settled on the selection they meant to make.
       _showAfterDelay(
         _selectionDebounceKey,
-        duration: const Duration(milliseconds: 200),
+        duration: const Duration(milliseconds: 400),
         isMetricsChanged: hasMetricsChanged,
       );
       if (hasMetricsChanged) hasMetricsChanged = false;
@@ -242,12 +245,20 @@ class _FloatingToolbarState extends State<FloatingToolbar>
     }
 
     final rect = _findSuitableRect(rects);
-    final (left, top, right) = calculateToolbarOffset(rect);
-    // if the selection is not visible, then don't show the toolbar.
-    if ((top <= floatingToolbarHeight || (left == 0 && right == 0)) &&
-        widget.toolbarBuilder != null) {
+    // if no part of the selection is visible, then don't show the toolbar.
+    // (_findSuitableRect returns Rect.zero as its "nothing visible"
+    // sentinel.) Previously this was inferred indirectly, by comparing
+    // calculateToolbarOffset's `top` -- a global screen coordinate --
+    // against the small constant floatingToolbarHeight, which
+    // misfired: it suppressed the toolbar for plenty of real, visible
+    // selections whose computed `top` legitimately landed at or below
+    // that constant, e.g. right after Rect.zero collapses `top` to
+    // `0 + floatingToolbarHeight` in calculateToolbarOffset -- exactly
+    // floatingToolbarHeight, always tripping the check.
+    if (rect == Rect.zero && widget.toolbarBuilder != null) {
       return;
     }
+    final (left, top, right) = calculateToolbarOffset(rect);
     _toolbarContainer = OverlayEntry(
       builder: (context) {
         final child = _buildToolbar(context);
@@ -295,17 +306,24 @@ class _FloatingToolbarState extends State<FloatingToolbar>
 
     final editorOffset =
         editorState.renderBox?.localToGlobal(Offset.zero) ?? Offset.zero;
+    final editorSize = editorState.renderBox?.size ?? Size.zero;
+    final editorRect = editorOffset & editorSize;
 
-    // find the min offset with non-negative dy.
-    final rectsWithNonNegativeDy = rects.where(
-      (element) => element.top >= editorOffset.dy,
-    );
-    if (rectsWithNonNegativeDy.isEmpty) {
-      // if all the rects offset is negative, then the selection is not visible.
+    // A rect only needs to overlap the visible viewport, not start at or
+    // below its top edge. The previous top-only check (`top >=
+    // editorOffset.dy`) excluded any rect that started slightly above the
+    // viewport -- a block scrolled just past the fold, or simple
+    // floating-point rounding right at the boundary -- even when most of
+    // it was genuinely on screen. When that left every candidate
+    // filtered out, the toolbar was permanently suppressed even though
+    // part of the selection was visible.
+    final visibleRects = rects.where((rect) => rect.overlaps(editorRect));
+    if (visibleRects.isEmpty) {
+      // no part of the selection is visible.
       return Rect.zero;
     }
 
-    final minRect = rectsWithNonNegativeDy.reduce((min, current) {
+    final minRect = visibleRects.reduce((min, current) {
       if (min.top < current.top) {
         return min;
       } else if (min.top == current.top) {

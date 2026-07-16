@@ -22,6 +22,11 @@ void main() async {
         endOffset: text.length,
       );
       await editor.updateSelection(selection);
+      // pumpAndSettle alone doesn't reliably wait out a plain Timer once
+      // the widget tree stops actively scheduling frames on its own --
+      // an explicit pump past the selection-show debounce (400ms) is
+      // needed so this doesn't depend on incidental settle timing.
+      await tester.pump(const Duration(milliseconds: 500));
 
       final floatingToolbar = find.byType(FloatingToolbarWidget);
       expect(floatingToolbar, findsOneWidget);
@@ -45,6 +50,7 @@ void main() async {
         endOffset: text.length,
       );
       await editor.updateSelection(selection);
+      await tester.pump(const Duration(milliseconds: 500));
 
       final floatingToolbar = find.byType(FloatingToolbarWidget);
       expect(floatingToolbar, findsOneWidget);
@@ -88,6 +94,7 @@ void main() async {
         end: Position(path: [2], offset: 3),
       );
       await editor.updateSelection(selection);
+      await tester.pump(const Duration(milliseconds: 500));
 
       final floatingToolbar = find.byType(FloatingToolbarWidget);
       final bulletListItem = find.byWidgetPredicate(
