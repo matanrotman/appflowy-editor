@@ -146,12 +146,13 @@ class _FloatingToolbarState extends State<FloatingToolbar>
       _clear();
     } else {
       // uses debounce to avoid the computing the rects too frequently.
-      // 400ms (was 200ms, 2026-07-16): a short delay reads as flicker --
-      // the toolbar popping up mid-interaction, before the user has
-      // settled on the selection they meant to make.
+      // 300ms (was 200ms, then 400ms; tuned down after user feedback
+      // 2026-07-16): a short delay reads as flicker -- the toolbar
+      // popping up mid-interaction, before the user has settled on the
+      // selection they meant to make.
       _showAfterDelay(
         _selectionDebounceKey,
-        duration: const Duration(milliseconds: 400),
+        duration: const Duration(milliseconds: 300),
         isMetricsChanged: hasMetricsChanged,
       );
       if (hasMetricsChanged) hasMetricsChanged = false;
