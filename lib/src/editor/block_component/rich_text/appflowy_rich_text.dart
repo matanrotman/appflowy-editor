@@ -284,6 +284,32 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
         _renderParagraph?.getOffsetForCaret(textPosition, Rect.zero) ??
             Offset.zero;
 
+    // Soft-wrap disambiguation (2026-07-20): the block-wide upstream
+    // affinity above is the validated choice for bidi run seams WITHIN a
+    // line, but at a soft line-wrap boundary upstream and downstream
+    // resolve to different LINES, and for a position that came from a
+    // pointer hit-test only the recorded affinity knows the right one.
+    // Honor a downstream hint iff it actually lands on a different line,
+    // so run seams (same line, different x) keep the validated upstream
+    // behavior. Without this, clicking in the gutter before the start of
+    // wrapped RTL line N drew the caret at the far-left END of line N-1.
+    if (position is _AffinityHintPosition &&
+        position.hitTestAffinity == TextAffinity.downstream &&
+        delta?.isNotEmpty == true) {
+      final downstreamTextPosition = TextPosition(offset: position.offset);
+      final downstreamOffset = _renderParagraph?.getOffsetForCaret(
+        downstreamTextPosition,
+        Rect.zero,
+      );
+      if (downstreamOffset != null &&
+          (downstreamOffset.dy - cursorOffset.dy).abs() > 0.1) {
+        cursorOffset = downstreamOffset;
+        cursorHeight =
+            _renderParagraph?.getFullHeightForCaret(downstreamTextPosition) ??
+                cursorHeight;
+      }
+    }
+
     if (placeholderCursorHeight != null) {
       cursorHeight = max(cursorHeight ?? 0, placeholderCursorHeight);
     }
@@ -311,9 +337,20 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
   @override
   Position getPositionInOffset(Offset start) {
     final offset = _renderParagraph?.globalToLocal(start) ?? Offset.zero;
-    final baseOffset =
-        _renderParagraph?.getPositionForOffset(offset).offset ?? -1;
-    return Position(path: widget.node.path, offset: baseOffset);
+    final textPosition = _renderParagraph?.getPositionForOffset(offset);
+    if (textPosition == null) {
+      return Position(path: widget.node.path, offset: -1);
+    }
+    // Keep the affinity Flutter resolved for the tap, not just the integer
+    // offset. At a soft line-wrap the offset alone is ambiguous — the same
+    // integer is both "end of the previous visual line" and "start of this
+    // one" — and only the affinity says which line was actually clicked.
+    // getCursorRectInPosition uses it to keep the caret on that line.
+    return _AffinityHintPosition(
+      path: widget.node.path,
+      offset: textPosition.offset,
+      hitTestAffinity: textPosition.affinity,
+    );
   }
 
   @override
@@ -811,4 +848,33 @@ extension AppFlowyRichTextAttributes on Attributes {
   bool get autoComplete => this[AppFlowyRichTextKeys.autoComplete] == true;
 
   bool get transparent => this[AppFlowyRichTextKeys.transparent] == true;
+}
+
+/// A [Position] that additionally remembers the [TextAffinity] a pointer
+/// hit-test resolved to.
+///
+/// [Position] deliberately models only `path` + `offset`, which is one bit
+/// short at a soft line-wrap: the wrap-boundary offset means both "end of
+/// the previous visual line" and "start of the next", and dropping the
+/// affinity made the caret renderer always pick the previous line — so in
+/// RTL, clicking just right of a wrapped line visibly threw the caret to
+/// the far LEFT of the line above (specs/rtl-support.md, reproduced live
+/// 2026-07-20).
+///
+/// This is a display-only hint, not part of the model: equality, hashing
+/// and JSON stay [Position]'s, and any `copyWith`/serialization round-trip
+/// elsewhere in the editor silently degrades it back to a plain [Position]
+/// (i.e. to the pre-hint caret placement) — never breaks. One known
+/// consequence: two successive gutter clicks that resolve to the same
+/// integer offset with different affinities compare equal, so the second
+/// may not visibly move the caret; harmless, and fixing it would mean
+/// putting affinity into Position's ==, which is a far riskier change.
+class _AffinityHintPosition extends Position {
+  _AffinityHintPosition({
+    required super.path,
+    super.offset,
+    required this.hitTestAffinity,
+  });
+
+  final TextAffinity hitTestAffinity;
 }
