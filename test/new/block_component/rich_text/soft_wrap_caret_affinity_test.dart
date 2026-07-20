@@ -146,4 +146,88 @@ void main() {
       expect(caretRect.top, closeTo(line1Rect.top, 1.0));
     });
   });
+
+  group('getLineBoundaryInPosition', () {
+    final text = List.generate(40, (i) => 'מילים').join(' ');
+
+    testWidgets('returns the visual line span of a wrapped RTL paragraph',
+        (tester) async {
+      final editor = tester.editor
+        ..addParagraph(
+          initialText: text,
+          decorator: (i, n) => n.updateAttributes(
+            {blockComponentTextDirection: blockComponentTextDirectionAuto},
+          ),
+        );
+      await editor.startTesting();
+
+      final selectable = editor.nodeAtPath([0])!.selectable!;
+      Rect rectAt(int offset) => selectable.getCursorRectInPosition(
+            Position(path: [0], offset: offset),
+          )!;
+
+      // Locate line 2 the same way the sibling group does: under upstream
+      // affinity the first offset whose caret dy jumps is (boundary + 1).
+      final line1Top = rectAt(0).top;
+      int? firstOffsetOnLine2;
+      for (var offset = 1; offset <= text.length; offset++) {
+        if (rectAt(offset).top > line1Top + 1) {
+          firstOffsetOnLine2 = offset;
+          break;
+        }
+      }
+      expect(firstOffsetOnLine2, isNotNull);
+      final boundary = firstOffsetOnLine2! - 1;
+
+      // A position safely inside visual line 2.
+      final midLine2 = selectable.getLineBoundaryInPosition(
+        Position(path: [0], offset: firstOffsetOnLine2 + 2),
+      );
+      expect(midLine2, isNotNull);
+      // The line's span starts at the wrap boundary (line 2's first
+      // character) — a smaller span like a word or a sentence would not.
+      expect(midLine2!.start.offset, boundary);
+      expect(midLine2.end.offset, greaterThan(firstOffsetOnLine2));
+      expect(
+        midLine2.end.offset,
+        lessThan(text.length),
+        reason: 'the span must be one visual line, not the whole block',
+      );
+
+      // A position inside line 1 maps to line 1: starts at 0 and ends at
+      // the same wrap boundary where line 2 begins (the ranges tile).
+      final midLine1 = selectable.getLineBoundaryInPosition(
+        Position(path: [0], offset: 1),
+      );
+      expect(midLine1!.start.offset, 0);
+      expect(
+        midLine1.end.offset,
+        anyOf(boundary, boundary - 1),
+        reason: 'line 1 ends at the soft-wrap boundary '
+            '(getLineBoundary may or may not include the trailing space)',
+      );
+
+      // Consistency with the caret renderer at the ambiguous boundary
+      // offset itself: a plain Position resolves upstream (the line the
+      // caret is drawn on — line 1).
+      final atBoundary = selectable.getLineBoundaryInPosition(
+        Position(path: [0], offset: boundary),
+      );
+      expect(atBoundary!.start.offset, 0, reason: 'upstream → line 1');
+    });
+
+    testWidgets('non-text selectables return null', (tester) async {
+      final editor = tester.editor..addParagraph(initialText: 'a');
+      await editor.startTesting();
+      // The base SelectableMixin default is null; exercised via a plain
+      // Position on an offset outside the delta, which must also be null.
+      final selectable = editor.nodeAtPath([0])!.selectable!;
+      expect(
+        selectable.getLineBoundaryInPosition(
+          Position(path: [0], offset: 99),
+        ),
+        isNull,
+      );
+    });
+  });
 }

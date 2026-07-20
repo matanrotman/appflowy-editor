@@ -86,6 +86,18 @@ mixin SelectableMixin<T extends StatefulWidget> on State<T> {
   ///   and the rest can return null.
   Selection? getWordBoundaryInPosition(Position position) => null;
 
+  /// For [TextNode] only.
+  ///
+  /// Returns the boundary of the VISUAL line containing [position] — the
+  ///   soft-wrapped line as rendered, bounded by the text width, not the
+  ///   sentence and not the whole block. Only render objects know where a
+  ///   line wraps, which is why this lives on the selectable and not on
+  ///   the text model.
+  ///
+  /// Only the widget rendered by [TextNode] need to implement the detail,
+  ///   and the rest can return null.
+  Selection? getLineBoundaryInPosition(Position position) => null;
+
   bool get shouldCursorBlink => true;
 
   CursorStyle get cursorStyle => CursorStyle.verticalLine;

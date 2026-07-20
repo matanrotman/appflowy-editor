@@ -392,6 +392,48 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
   }
 
   @override
+  Selection? getLineBoundaryInPosition(Position position) {
+    final delta = widget.node.delta;
+    if (position.offset < 0 ||
+        (delta != null && position.offset > delta.length)) {
+      return null;
+    }
+    final paragraph = _renderParagraph;
+    if (paragraph == null || (kDebugMode && paragraph.debugNeedsLayout)) {
+      return null;
+    }
+    // Resolve the position with the same affinity the caret renderer uses
+    // (upstream by default, downstream when a pointer hit-test hint says
+    // so — see getCursorRectInPosition), so at a soft-wrap boundary the
+    // returned line is the one the user actually sees the caret on.
+    var affinity = TextAffinity.upstream;
+    if (position is _AffinityHintPosition &&
+        position.hitTestAffinity == TextAffinity.downstream) {
+      affinity = TextAffinity.downstream;
+    }
+    final textPosition =
+        TextPosition(offset: position.offset, affinity: affinity);
+
+    // RenderParagraph exposes no public getLineBoundary (it is private,
+    // `_getLineAtOffset`, as of Flutter 3.27), so derive the visual line's
+    // span by hit-testing just past the line's two horizontal edges — the
+    // same semantics a click at either edge has: the leading edge resolves
+    // to the line's first position, the trailing edge to its last,
+    // whichever side each is on in the paragraph's direction. min/max
+    // makes it direction-agnostic.
+    final caretTop = paragraph.getOffsetForCaret(textPosition, Rect.zero).dy;
+    final lineMidY = caretTop + paragraph.getFullHeightForCaret(textPosition) / 2;
+    final a = paragraph.getPositionForOffset(Offset(-10, lineMidY)).offset;
+    final b = paragraph
+        .getPositionForOffset(Offset(paragraph.size.width + 10, lineMidY))
+        .offset;
+    return Selection(
+      start: Position(path: widget.node.path, offset: min(a, b)),
+      end: Position(path: widget.node.path, offset: max(a, b)),
+    );
+  }
+
+  @override
   List<Rect> getRectsInSelection(
     Selection selection, {
     bool shiftWithBaseOffset = false,

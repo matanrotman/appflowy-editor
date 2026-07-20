@@ -87,6 +87,9 @@ mixin DefaultSelectableMixin {
   Selection? getWordBoundaryInPosition(Position position) =>
       forward.getWordBoundaryInPosition(position);
 
+  Selection? getLineBoundaryInPosition(Position position) =>
+      forward.getLineBoundaryInPosition(position);
+
   Position start() => forward.start();
 
   Position end() => forward.end();
