@@ -115,6 +115,17 @@ class SelectionGestureDetectorState extends State<SelectionGestureDetector> {
         widget.onDoubleTapDown!(tapDownDetails);
       }
       _tripleTabCount++;
+      // Restart the triple-tap window from THIS (the second) tap. Without this
+      // the window stays anchored to the first tap, so the third click has to
+      // land within kTripleTapTimeout of the first — the double-click, the
+      // glance, and the third click all have to fit in one 500ms budget. Timing
+      // each click off the previous one (as desktop platforms do) is what makes
+      // double-click-word → triple-click-paragraph feel natural.
+      _tripleTabTimer?.cancel();
+      _tripleTabTimer = Timer(kTripleTapTimeout, () {
+        _tripleTabCount = 0;
+        _tripleTabTimer = null;
+      });
     } else {
       if (widget.onTapDown != null) {
         widget.onTapDown!(tapDownDetails);
