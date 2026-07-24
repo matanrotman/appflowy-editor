@@ -230,6 +230,64 @@ extension TextTransforms on EditorState {
     }
   }
 
+  /// [fork:ribbon] specs/ribbon-menu.md (Phase 4).
+  ///
+  /// Like [toggleAttribute], but whenever the toggle turns [key] ON it also
+  /// clears [opposite], so the two marks are mutually exclusive — used for
+  /// superscript vs subscript, which cannot both apply to the same run. Turning
+  /// [key] OFF leaves [opposite] untouched. Mirrors [toggleAttribute]'s
+  /// collapsed (pending toggledStyle) and expanded (formatDelta) handling so
+  /// behaviour matches the built-in marks.
+  Future<void> toggleExclusiveAttribute(
+    String key,
+    String opposite, {
+    Selection? selection,
+    Map? selectionExtraInfo,
+  }) async {
+    selection ??= this.selection;
+    if (selection == null) {
+      return;
+    }
+
+    final nodes = getNodesInSelection(selection);
+    if (selection.isCollapsed) {
+      final bool enabling;
+      if (toggledStyle.containsKey(key)) {
+        enabling = toggledStyle[key] != true;
+      } else {
+        final active = nodes.allSatisfyInSelection(
+          selection.copyWith(
+            start: selection.start.copyWith(
+              offset: max(selection.startIndex - 1, 0),
+            ),
+          ),
+          (delta) => delta.everyAttributes(
+            (attributes) => attributes[key] == true,
+          ),
+        );
+        enabling = !active;
+      }
+      updateToggledStyle(key, enabling);
+      if (enabling) {
+        updateToggledStyle(opposite, false);
+      }
+    } else {
+      final active = nodes.allSatisfyInSelection(selection, (delta) {
+        return delta.everyAttributes(
+          (attributes) => attributes[key] == true,
+        );
+      });
+      await formatDelta(
+        selection,
+        {
+          key: !active,
+          if (!active) opposite: null,
+        },
+        selectionExtraInfo: selectionExtraInfo,
+      );
+    }
+  }
+
   /// format the node at the given selection.
   ///
   /// If the [Selection] is not passed in, use the current selection.

@@ -157,7 +157,7 @@ class _NumberedListBlockComponentWidgetState
               delegate: this,
               node: widget.node,
               editorState: editorState,
-              textAlign: alignment?.toTextAlign ?? textAlign,
+              textAlign: blockTextAlign ?? textAlign,
               placeholderText: placeholderText,
               textSpanDecorator: (textSpan) => textSpan.updateTextStyle(
                 textStyleWithTextSpan(textSpan: textSpan),

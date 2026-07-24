@@ -750,6 +750,20 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
             TextStyle(fontSize: attributes.fontSize),
           );
         }
+        // [fork:ribbon] Phase 4 — super/subscript via OpenType font features.
+        // These stay pure TextSpans, so the caret and selection map 1:1 to
+        // characters (a WidgetSpan would collapse the run to one placeholder).
+        // Write-time mutual exclusivity means both are never set at once.
+        if (attributes.superscript == true) {
+          textStyle = textStyle.combine(
+            const TextStyle(fontFeatures: [FontFeature.superscripts()]),
+          );
+        }
+        if (attributes.subscript == true) {
+          textStyle = textStyle.combine(
+            const TextStyle(fontFeatures: [FontFeature.subscripts()]),
+          );
+        }
         if (attributes.autoComplete == true) {
           textStyle = textStyle.combine(textStyleConfiguration.autoComplete);
         }
@@ -890,6 +904,10 @@ extension AppFlowyRichTextAttributes on Attributes {
   bool get autoComplete => this[AppFlowyRichTextKeys.autoComplete] == true;
 
   bool get transparent => this[AppFlowyRichTextKeys.transparent] == true;
+
+  bool get superscript => this[AppFlowyRichTextKeys.superscript] == true;
+
+  bool get subscript => this[AppFlowyRichTextKeys.subscript] == true;
 }
 
 /// A [Position] that additionally remembers the [TextAffinity] a pointer
