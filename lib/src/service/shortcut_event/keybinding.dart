@@ -12,7 +12,7 @@ extension KeybindingsExtension on List<Keybinding> {
           keybinding.isAltPressed == HardwareKeyboard.instance.isAltPressed &&
           keybinding.isShiftPressed ==
               HardwareKeyboard.instance.isShiftPressed &&
-          keybinding.keyCode == keyEvent.logicalKey.keyId) {
+          keybinding.matchesKeyEvent(keyEvent)) {
         return true;
       }
     }
@@ -85,6 +85,28 @@ class Keybinding {
   final String keyLabel;
 
   int get keyCode => keyToCodeMapping[keyLabel.toLowerCase()]!;
+
+  /// The layout-independent PHYSICAL key for this binding's key, or null when
+  /// the key isn't in [keyToPhysicalCodeMapping] (then only the logical key is
+  /// used, exactly as before).
+  int? get physicalKeyCode => keyToPhysicalCodeMapping[keyLabel.toLowerCase()];
+
+  /// Whether [keyEvent]'s key matches this binding — by LOGICAL key (the
+  /// character the layout produces) OR by PHYSICAL location (the same key
+  /// position, independent of layout/language). The physical match is what keeps
+  /// a shortcut working when the user switches to a non-Latin keyboard (e.g.
+  /// Hebrew), and what makes a user's own rebinding stick regardless of input
+  /// language. Modifiers are checked separately by the caller.
+  ///
+  /// Additive: the logical match is tried first, so on a Latin layout — where
+  /// logical and physical coincide — behaviour is unchanged.
+  bool matchesKeyEvent(KeyEvent keyEvent) {
+    if (keyCode == keyEvent.logicalKey.keyId) {
+      return true;
+    }
+    final physical = physicalKeyCode;
+    return physical != null && physical == keyEvent.physicalKey.usbHidUsage;
+  }
 
   Keybinding copyWith({
     bool? isAltPressed,

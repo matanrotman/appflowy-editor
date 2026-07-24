@@ -1,3 +1,5 @@
+import 'package:flutter/services.dart';
+
 /// Keyboard key to keycode mapping table
 ///
 /// Copy from flutter project, keyboard_key.dart.
@@ -447,3 +449,83 @@ Map<String, int> keyToCodeMapping = <String, int>{
   'Game Button Y': 0x0020000031e,
   'Game Button Z': 0x0020000031f,
 }.map((key, value) => MapEntry(key.toLowerCase(), value));
+
+/// Key label -> PHYSICAL key code (USB HID usage) mapping.
+///
+/// [keyToCodeMapping] above maps a key label to its LOGICAL key id, which
+/// changes with the active keyboard layout (a Hebrew or Dvorak layout makes the
+/// same physical key produce a different character/logical key). This parallel
+/// table maps the same labels to the layout-independent PHYSICAL key, so a
+/// shortcut can also match "the key in this position" regardless of the input
+/// language. Used by `Keybinding.matchesKeyEvent` as an additional match, so a
+/// shortcut fires on either the logical key OR its physical location — which is
+/// what makes e.g. Cmd+Option+`.` keep working when the user switches to a
+/// Hebrew keyboard, and what makes a user's custom rebinding stick across
+/// layouts (the stored label matches the same physical key either way).
+///
+/// Only the keys that appear in shortcuts are listed; a label absent here simply
+/// falls back to logical-only matching, exactly as before. Keyed by the same
+/// lowercased labels as [keyToCodeMapping].
+final Map<String, int> keyToPhysicalCodeMapping = <String, int>{
+  'a': PhysicalKeyboardKey.keyA.usbHidUsage,
+  'b': PhysicalKeyboardKey.keyB.usbHidUsage,
+  'c': PhysicalKeyboardKey.keyC.usbHidUsage,
+  'd': PhysicalKeyboardKey.keyD.usbHidUsage,
+  'e': PhysicalKeyboardKey.keyE.usbHidUsage,
+  'f': PhysicalKeyboardKey.keyF.usbHidUsage,
+  'g': PhysicalKeyboardKey.keyG.usbHidUsage,
+  'h': PhysicalKeyboardKey.keyH.usbHidUsage,
+  'i': PhysicalKeyboardKey.keyI.usbHidUsage,
+  'j': PhysicalKeyboardKey.keyJ.usbHidUsage,
+  'k': PhysicalKeyboardKey.keyK.usbHidUsage,
+  'l': PhysicalKeyboardKey.keyL.usbHidUsage,
+  'm': PhysicalKeyboardKey.keyM.usbHidUsage,
+  'n': PhysicalKeyboardKey.keyN.usbHidUsage,
+  'o': PhysicalKeyboardKey.keyO.usbHidUsage,
+  'p': PhysicalKeyboardKey.keyP.usbHidUsage,
+  'q': PhysicalKeyboardKey.keyQ.usbHidUsage,
+  'r': PhysicalKeyboardKey.keyR.usbHidUsage,
+  's': PhysicalKeyboardKey.keyS.usbHidUsage,
+  't': PhysicalKeyboardKey.keyT.usbHidUsage,
+  'u': PhysicalKeyboardKey.keyU.usbHidUsage,
+  'v': PhysicalKeyboardKey.keyV.usbHidUsage,
+  'w': PhysicalKeyboardKey.keyW.usbHidUsage,
+  'x': PhysicalKeyboardKey.keyX.usbHidUsage,
+  'y': PhysicalKeyboardKey.keyY.usbHidUsage,
+  'z': PhysicalKeyboardKey.keyZ.usbHidUsage,
+  'digit 0': PhysicalKeyboardKey.digit0.usbHidUsage,
+  'digit 1': PhysicalKeyboardKey.digit1.usbHidUsage,
+  'digit 2': PhysicalKeyboardKey.digit2.usbHidUsage,
+  'digit 3': PhysicalKeyboardKey.digit3.usbHidUsage,
+  'digit 4': PhysicalKeyboardKey.digit4.usbHidUsage,
+  'digit 5': PhysicalKeyboardKey.digit5.usbHidUsage,
+  'digit 6': PhysicalKeyboardKey.digit6.usbHidUsage,
+  'digit 7': PhysicalKeyboardKey.digit7.usbHidUsage,
+  'digit 8': PhysicalKeyboardKey.digit8.usbHidUsage,
+  'digit 9': PhysicalKeyboardKey.digit9.usbHidUsage,
+  'comma': PhysicalKeyboardKey.comma.usbHidUsage,
+  'period': PhysicalKeyboardKey.period.usbHidUsage,
+  'slash': PhysicalKeyboardKey.slash.usbHidUsage,
+  'semicolon': PhysicalKeyboardKey.semicolon.usbHidUsage,
+  'quote single': PhysicalKeyboardKey.quote.usbHidUsage,
+  'bracket left': PhysicalKeyboardKey.bracketLeft.usbHidUsage,
+  'bracket right': PhysicalKeyboardKey.bracketRight.usbHidUsage,
+  'backslash': PhysicalKeyboardKey.backslash.usbHidUsage,
+  'backquote': PhysicalKeyboardKey.backquote.usbHidUsage,
+  'minus': PhysicalKeyboardKey.minus.usbHidUsage,
+  'equal': PhysicalKeyboardKey.equal.usbHidUsage,
+  'space': PhysicalKeyboardKey.space.usbHidUsage,
+  'tab': PhysicalKeyboardKey.tab.usbHidUsage,
+  'enter': PhysicalKeyboardKey.enter.usbHidUsage,
+  'escape': PhysicalKeyboardKey.escape.usbHidUsage,
+  'backspace': PhysicalKeyboardKey.backspace.usbHidUsage,
+  'delete': PhysicalKeyboardKey.delete.usbHidUsage,
+  'home': PhysicalKeyboardKey.home.usbHidUsage,
+  'end': PhysicalKeyboardKey.end.usbHidUsage,
+  'page up': PhysicalKeyboardKey.pageUp.usbHidUsage,
+  'page down': PhysicalKeyboardKey.pageDown.usbHidUsage,
+  'arrow up': PhysicalKeyboardKey.arrowUp.usbHidUsage,
+  'arrow down': PhysicalKeyboardKey.arrowDown.usbHidUsage,
+  'arrow left': PhysicalKeyboardKey.arrowLeft.usbHidUsage,
+  'arrow right': PhysicalKeyboardKey.arrowRight.usbHidUsage,
+};
