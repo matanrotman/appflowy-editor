@@ -43,7 +43,12 @@ class SelectionGestureDetectorState extends State<SelectionGestureDetector> {
   int _tripleTabCount = 0;
   Timer? _tripleTabTimer;
 
-  final kTripleTapTimeout = const Duration(milliseconds: 500);
+  // Widened from 500ms (app user request, 2026-07-23: "make the third click
+  // even easier"). Now that each click is timed from the previous one rather
+  // than from the first tap, this is the grace period between the double-click
+  // and the third click — a generous window so a glance before the third click
+  // still completes the paragraph selection.
+  final kTripleTapTimeout = const Duration(milliseconds: 700);
 
   @override
   Widget build(BuildContext context) {

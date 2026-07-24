@@ -52,11 +52,11 @@ void main() {
       await tester.tap(target, warnIfMissed: false);
       await tester.pump(const Duration(milliseconds: 250));
       await tester.tap(target, warnIfMissed: false);
-      // ...then the user pauses to look before the third click. At 350ms after
-      // the double-tap this is PAST the old window (which ended 500ms after the
-      // FIRST tap, i.e. ~250ms after the double-tap) but within the new window
-      // measured from the double-tap. Old code: single. New code: triple.
-      await tester.pump(const Duration(milliseconds: 350));
+      // ...then the user pauses to look before the third click. At 550ms after
+      // the double-tap (t≈800ms) this is PAST the old window (which ended 700ms
+      // after the FIRST tap) but within the new window measured from the
+      // double-tap (ends ~950ms). Old code: single. New code: triple.
+      await tester.pump(const Duration(milliseconds: 550));
       await tester.tap(target, warnIfMissed: false);
       await tester.pumpAndSettle();
 
@@ -83,8 +83,8 @@ void main() {
       await tester.tap(target, warnIfMissed: false);
       await tester.pump(kDoubleTapMinTime);
       await tester.tap(target, warnIfMissed: false);
-      // Well beyond kTripleTapTimeout (500ms) after the double-tap.
-      await tester.pump(const Duration(milliseconds: 700));
+      // Well beyond kTripleTapTimeout (700ms) after the double-tap.
+      await tester.pump(const Duration(milliseconds: 1000));
       await tester.tap(target, warnIfMissed: false);
       await tester.pumpAndSettle();
 
