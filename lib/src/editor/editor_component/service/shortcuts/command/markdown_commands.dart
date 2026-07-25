@@ -64,18 +64,16 @@ final CommandShortcutEvent toggleStrikethroughCommand = CommandShortcutEvent(
   ),
 );
 
-/// [fork:ribbon] Moved off ⌘E on 2026-07-25 (user's request): the alignment
-/// shortcuts adopted Word's ⌘L / ⌘E / ⌘R / ⌘J, and centre-align claimed ⌘E.
-///
-/// ⌘⇧E was the obvious next door but is already the app's math-equation
-/// shortcut, so inline code landed on ⌘⇧C — free in both the app and this
-/// package, mnemonic, and the same chord Slack uses for inline code. Inline
-/// code also remains reachable from the ribbon and from markdown backticks.
+/// Briefly moved to ⌘⇧C on 2026-07-25 to free ⌘E for centre-align, then
+/// reverted the same day: the user did not approve the alignment remap. Kept
+/// as a note because the move also could not have worked — the app's saved
+/// `shortcuts.json` pins 'toggle code' to cmd+e and overrides this default at
+/// startup (see the app's `custom_text_align_command.dart`).
 final CommandShortcutEvent toggleCodeCommand = CommandShortcutEvent(
   key: 'toggle code',
   getDescription: () => AppFlowyEditorL10n.current.cmdToggleCode,
-  command: 'ctrl+shift+c',
-  macOSCommand: 'cmd+shift+c',
+  command: 'ctrl+e',
+  macOSCommand: 'cmd+e',
   handler: (editorState) => _toggleAttribute(
     editorState,
     AppFlowyRichTextKeys.code,
