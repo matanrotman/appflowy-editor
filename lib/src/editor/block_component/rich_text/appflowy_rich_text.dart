@@ -284,18 +284,27 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
         _renderParagraph?.getOffsetForCaret(textPosition, Rect.zero) ??
             Offset.zero;
 
-    // Soft-wrap disambiguation (2026-07-20): the block-wide upstream
-    // affinity above is the validated choice for bidi run seams WITHIN a
-    // line, but at a soft line-wrap boundary upstream and downstream
-    // resolve to different LINES, and for a position that came from a
-    // pointer hit-test only the recorded affinity knows the right one.
-    // Honor a downstream hint iff it actually lands on a different line,
-    // so run seams (same line, different x) keep the validated upstream
-    // behavior. Without this, clicking in the gutter before the start of
-    // wrapped RTL line N drew the caret at the far-left END of line N-1.
-    if (position is _AffinityHintPosition &&
-        position.hitTestAffinity == TextAffinity.downstream &&
-        delta?.isNotEmpty == true) {
+    // Soft-wrap disambiguation (2026-07-20, generalised 2026-07-25): the
+    // block-wide upstream affinity above is the validated choice for bidi run
+    // seams WITHIN a line, but at a soft line-wrap boundary upstream and
+    // downstream resolve to different LINES, and the offset alone cannot say
+    // which one the user meant.
+    //
+    // The rule is: **put the caret on the line the pointer was actually on.**
+    // Both candidate lines are laid out here, so their vertical bands are
+    // known; the click's own dy picks the winner. This deliberately replaces
+    // the earlier "honor a downstream affinity hint" rule, which fixed one
+    // direction and caused the other: clicking the END of a wrapped line
+    // reported `downstream` and threw the caret to the START of the next line
+    // (reported 2026-07-25). Affinity is a claim about text; the pointer
+    // position is the evidence.
+    //
+    // The `> 0.1` different-line guard is load-bearing and unchanged: when
+    // both candidates sit on the SAME line (a bidi run seam — same line,
+    // different x) this whole branch is skipped and the validated upstream
+    // behaviour stands, which is what keeps the deferred embedded-date caret
+    // question untouched.
+    if (position is _AffinityHintPosition && delta?.isNotEmpty == true) {
       final downstreamTextPosition = TextPosition(offset: position.offset);
       final downstreamOffset = _renderParagraph?.getOffsetForCaret(
         downstreamTextPosition,
@@ -303,10 +312,33 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       );
       if (downstreamOffset != null &&
           (downstreamOffset.dy - cursorOffset.dy).abs() > 0.1) {
-        cursorOffset = downstreamOffset;
-        cursorHeight =
-            _renderParagraph?.getFullHeightForCaret(downstreamTextPosition) ??
-                cursorHeight;
+        final downstreamHeight =
+            _renderParagraph?.getFullHeightForCaret(downstreamTextPosition);
+        final clickedDy = position.hitTestLocalOffset?.dy;
+
+        final bool preferDownstream;
+        if (clickedDy != null) {
+          preferDownstream = _verticalDistanceToLine(
+                clickedDy,
+                downstreamOffset.dy,
+                downstreamHeight ?? cursorHeight ?? 0,
+              ) <
+              _verticalDistanceToLine(
+                clickedDy,
+                cursorOffset.dy,
+                cursorHeight ?? 0,
+              );
+        } else {
+          // No recorded pointer position (not a hit-test-derived position):
+          // fall back to the pre-2026-07-25 affinity rule.
+          preferDownstream =
+              position.hitTestAffinity == TextAffinity.downstream;
+        }
+
+        if (preferDownstream) {
+          cursorOffset = downstreamOffset;
+          cursorHeight = downstreamHeight ?? cursorHeight;
+        }
       }
     }
 
@@ -350,6 +382,7 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       path: widget.node.path,
       offset: textPosition.offset,
       hitTestAffinity: textPosition.affinity,
+      hitTestLocalOffset: offset,
     );
   }
 
@@ -929,12 +962,41 @@ extension AppFlowyRichTextAttributes on Attributes {
 /// integer offset with different affinities compare equal, so the second
 /// may not visibly move the caret; harmless, and fixing it would mean
 /// putting affinity into Position's ==, which is a far riskier change.
+/// How far [y] sits outside the vertical band of a line whose caret starts at
+/// [lineTop] and is [lineHeight] tall. Returns 0 when [y] is inside the band,
+/// so a click anywhere on a line is treated as unambiguously belonging to it.
+///
+/// Used to choose between the two candidate lines at a soft-wrap boundary; see
+/// the call site in `getCursorRectInPosition`.
+double _verticalDistanceToLine(double y, double lineTop, double lineHeight) {
+  final lineBottom = lineTop + lineHeight;
+  if (y < lineTop) {
+    return lineTop - y;
+  }
+  if (y > lineBottom) {
+    return y - lineBottom;
+  }
+  return 0;
+}
+
+/// Update 2026-07-25: the hint now also carries the pointer's own local
+/// offset. Affinity alone turned out to be one bit short in the mirror case —
+/// clicking at the END of a wrapped line put the caret at the START of the
+/// next one, because Flutter reported `downstream` there and the renderer
+/// dutifully followed it onto the wrong line. The pointer's y says which line
+/// the user actually aimed at, and that is the thing being disambiguated, so
+/// it is a better oracle than the affinity flag. Affinity remains the
+/// fallback for the (rare) case where no local offset was recorded.
 class _AffinityHintPosition extends Position {
   _AffinityHintPosition({
     required super.path,
     super.offset,
     required this.hitTestAffinity,
+    this.hitTestLocalOffset,
   });
 
   final TextAffinity hitTestAffinity;
+
+  /// Where the pointer landed, in the render paragraph's local coordinates.
+  final Offset? hitTestLocalOffset;
 }

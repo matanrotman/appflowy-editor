@@ -45,4 +45,24 @@ mixin BlockComponentAlignMixin {
         return null;
     }
   }
+
+  /// [fork:ribbon] specs/ribbon-menu.md (Phase 4, gap found 2026-07-25).
+  ///
+  /// Whether this block is justified, and therefore whether its text child must
+  /// be laid out **tight** rather than shrink-wrapped.
+  ///
+  /// Every component that renders a leading marker (bullet, number, checkbox,
+  /// quote bar, heading toggle) puts its text in a `Flexible` inside a
+  /// `Row(mainAxisSize: MainAxisSize.min)`. A loose `Flexible` lets the text
+  /// size to its *intrinsic* width, so there is no slack for justify to
+  /// distribute and the paragraph renders identically to a plain start-aligned
+  /// one — which is exactly what "justify does nothing in a bulleted list"
+  /// looked like. Paragraph blocks have no such Row, which is why they were the
+  /// only ones where justify appeared to work.
+  ///
+  /// Callers use this to pick the flex fit. It is deliberately scoped to the
+  /// justify case: every other alignment keeps the existing loose layout
+  /// byte-for-byte, so this cannot regress box positioning (see [alignment]) or
+  /// widen a list row that used to hug its text.
+  bool get isJustified => blockTextAlign == TextAlign.justify;
 }

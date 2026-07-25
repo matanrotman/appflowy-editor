@@ -130,6 +130,83 @@ void main() {
     });
 
     testWidgets(
+        'clicking AT the end of a wrapped RTL line keeps the caret on that '
+        'line, not at the start of the next one', (tester) async {
+      // Guard for the mirror bug reported 2026-07-25: "if I click on the end
+      // of a sentence that isn't the last sentence, it shows the text cursor
+      // on the beginning of the next line."
+      //
+      // ⚠️ HONESTY NOTE — this is a NON-REGRESSION GUARD, not a proof.
+      // It passes both with and without the fix, because the bug does not
+      // reproduce headlessly: under the Ahem test font every click along
+      // line 2's trailing edge resolves to the same offset with UPSTREAM
+      // affinity, so the branch that causes the jump never fires here. That is
+      // the exact blindness CLAUDE.md warns about — the fake font collapses
+      // RTL glyph geometry. Probed explicitly at dx = 0/1/5 and either side of
+      // the end-of-line caret; all stayed on line 2 pre-fix.
+      //
+      // So: the fix rests on code reasoning plus LIVE verification on the real
+      // macOS target, and this test exists to catch a future regression of the
+      // line-membership invariant, not to demonstrate the original failure.
+      // If this bug ever recurs, do not trust a green run here.
+      final editor = await buildWrappedRtlParagraph(tester, text);
+      final rectAt = editor.rectAt;
+      final selectable = editor.selectable;
+
+      // Walk out two wrap boundaries so the clicked line has a line both
+      // above and below it — the "isn't the last sentence" part of the report.
+      final line1Top = rectAt(0).top;
+      int? firstOffsetOnLine2;
+      for (var offset = 1; offset <= text.length; offset++) {
+        if (rectAt(offset).top > line1Top + 1) {
+          firstOffsetOnLine2 = offset;
+          break;
+        }
+      }
+      expect(firstOffsetOnLine2, isNotNull, reason: 'paragraph did not wrap');
+
+      final line2Top = rectAt(firstOffsetOnLine2!).top;
+      int? firstOffsetOnLine3;
+      for (var offset = firstOffsetOnLine2 + 1;
+          offset <= text.length;
+          offset++) {
+        if (rectAt(offset).top > line2Top + 1) {
+          firstOffsetOnLine3 = offset;
+          break;
+        }
+      }
+      expect(
+        firstOffsetOnLine3,
+        isNotNull,
+        reason: 'paragraph needs at least three visual lines',
+      );
+
+      // The end of line 2 == the boundary offset shared with line 3. In RTL
+      // that is the line's LEFT extreme.
+      final endOfLine2Rect = rectAt(firstOffsetOnLine3! - 1);
+      expect(
+        endOfLine2Rect.top,
+        closeTo(line2Top, 1.0),
+        reason: 'setup: the boundary offset should render on line 2',
+      );
+
+      final clickLocal = Offset(
+        endOfLine2Rect.center.dx,
+        endOfLine2Rect.center.dy,
+      );
+      final position =
+          selectable.getPositionInOffset(selectable.localToGlobal(clickLocal));
+      final caretRect = selectable.getCursorRectInPosition(position)!;
+
+      expect(
+        caretRect.top,
+        closeTo(line2Top, 1.0),
+        reason: 'caret must stay on the line that was clicked (line 2), not '
+            'drop to the start of line 3',
+      );
+    });
+
+    testWidgets(
         'first-line exception: clicking in the gutter before line 1 lands '
         'at offset 0 on line 1', (tester) async {
       final editor = await buildWrappedRtlParagraph(tester, text);

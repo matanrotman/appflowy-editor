@@ -130,6 +130,9 @@ class _QuoteBlockComponentWidgetState extends State<QuoteBlockComponentWidget>
                 ? widget.iconBuilder!(context, node)
                 : const _QuoteIcon(),
             Flexible(
+              // [fork:ribbon] justify needs a tight child, or the text
+              // shrink-wraps and has no slack to stretch. See [isJustified].
+              fit: isJustified ? FlexFit.tight : FlexFit.loose,
               child: AppFlowyRichText(
                 key: forwardKey,
                 delegate: this,

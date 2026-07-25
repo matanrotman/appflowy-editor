@@ -158,4 +158,29 @@ void main() {
       expect(_AlignHost(_paragraph(align: 'justify')).alignment, isNull);
     });
   });
+
+  group('isJustified (tight flex fit for marker-bearing blocks)', () {
+    // Regression guard for the 2026-07-25 finding: justify did nothing inside
+    // bulleted/numbered/todo/quote/heading blocks, because each puts its text in
+    // a loose `Flexible` inside a `Row(mainAxisSize: MainAxisSize.min)`. A loose
+    // child shrink-wraps to its intrinsic width, leaving justify no slack to
+    // distribute. Those components now pick `FlexFit.tight` off this getter.
+    test('is true only for justify', () {
+      expect(_AlignHost(_paragraph(align: 'justify')).isJustified, isTrue);
+    });
+
+    test('every other alignment stays loose, so layout is unchanged', () {
+      // This is the important half: scoping the tight fit to justify alone is
+      // what guarantees the fix cannot widen a list row that used to hug its
+      // text, or disturb the box positioning that left/center/right rely on.
+      for (final align in ['left', 'center', 'right']) {
+        expect(
+          _AlignHost(_paragraph(align: align)).isJustified,
+          isFalse,
+          reason: '$align must keep the pre-fix loose layout',
+        );
+      }
+      expect(_AlignHost(_paragraph()).isJustified, isFalse);
+    });
+  });
 }
