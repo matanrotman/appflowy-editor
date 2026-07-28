@@ -41,6 +41,17 @@ mixin DefaultSelectableMixin {
   Position getPositionInOffset(Offset start) =>
       forward.getPositionInOffset(start);
 
+  /// ⚠️ This mixin forwards to the inner text selectable METHOD BY METHOD, so a
+  /// new [SelectableMixin] member is invisible to every block component until it
+  /// is added here — it silently returns the base implementation instead.
+  /// That is exactly what happened when visual caret movement was first wired
+  /// up: the primitive and its tests were correct, and the app never called it.
+  Position? getNextVisualCaretPosition(
+    Position position, {
+    required bool towardsLeft,
+  }) =>
+      forward.getNextVisualCaretPosition(position, towardsLeft: towardsLeft);
+
   Rect? getCursorRectInPosition(
     Position position, {
     bool shiftWithBaseOffset = false,
