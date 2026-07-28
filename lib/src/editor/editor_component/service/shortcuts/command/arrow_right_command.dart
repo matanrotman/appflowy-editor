@@ -31,6 +31,7 @@ CommandShortcutEventHandler _arrowRightCommandHandler = (editorState) {
   if (selection == null) {
     return KeyEventResult.ignored;
   }
+  VisualCaretTraversal.probe('--- arrow RIGHT handler entered ---');
   if (moveCaretVisually(editorState, towardsLeft: false)) {
     return KeyEventResult.handled;
   }

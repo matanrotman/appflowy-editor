@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/rendering.dart';
 
 /// Visual caret traversal for bidirectional text.
@@ -24,6 +26,20 @@ import 'package:flutter/rendering.dart';
 /// offset per direction once the side is known.
 class VisualCaretTraversal {
   const VisualCaretTraversal._();
+
+  // ⚠️ TEMPORARY INSTRUMENTATION (2026-07-28) — REMOVE once the arrow path is
+  // diagnosed. Writes to a file because the app is launched from the Dock and
+  // has nowhere to print. Ludwig is not sandboxed, so HOME is the real home.
+  static bool probeEnabled = true;
+  static void probe(String message) {
+    if (!probeEnabled) return;
+    try {
+      File('${Platform.environment['HOME']}/ludwig_caret_probe.log')
+          .writeAsStringSync('$message\n', mode: FileMode.append);
+    } catch (_) {
+      // Diagnostics must never break editing.
+    }
+  }
 
   /// Tolerance for treating two measured coordinates as the same point. Text
   /// layout returns doubles that differ in their last bits for what is visually

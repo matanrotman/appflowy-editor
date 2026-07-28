@@ -27,8 +27,10 @@ final CommandShortcutEvent moveCursorLeftCommand = CommandShortcutEvent(
 );
 
 CommandShortcutEventHandler _arrowLeftCommandHandler = (editorState) {
+  VisualCaretTraversal.probe('--- arrow LEFT handler entered ---');
   final selection = editorState.selection;
   if (selection == null) {
+    VisualCaretTraversal.probe('  selection is null -> ignored');
     return KeyEventResult.ignored;
   }
   if (moveCaretVisually(editorState, towardsLeft: true)) {
@@ -57,13 +59,25 @@ bool moveCaretVisually(
 }) {
   final selection = editorState.selection;
   if (selection == null || !selection.isCollapsed) {
+    VisualCaretTraversal.probe(
+      '  moveCaretVisually: selection null=${selection == null} '
+      'collapsed=${selection?.isCollapsed}',
+    );
     return false;
   }
   final position = selection.start;
   final node = editorState.getNodeAtPath(position.path);
-  final next = node?.selectable?.getNextVisualCaretPosition(
+  final selectable = node?.selectable;
+  VisualCaretTraversal.probe(
+    '  node=${node?.type} selectable=${selectable.runtimeType} '
+    'positionType=${position.runtimeType} offset=${position.offset}',
+  );
+  final next = selectable?.getNextVisualCaretPosition(
     position,
     towardsLeft: towardsLeft,
+  );
+  VisualCaretTraversal.probe(
+    '  -> next=${next == null ? "NULL (falls back to old behaviour)" : "${next.runtimeType} offset=${next.offset}"}',
   );
   if (next == null) {
     return false;
