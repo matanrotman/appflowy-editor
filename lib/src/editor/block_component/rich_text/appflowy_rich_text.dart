@@ -451,12 +451,22 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
   }) {
     final paragraph = _renderParagraph;
     final text = widget.node.delta?.toPlainText();
-    if (paragraph == null ||
-        (kDebugMode && paragraph.debugNeedsLayout) ||
-        text == null ||
-        text.isEmpty ||
-        position.offset < 0 ||
-        position.offset > text.length) {
+    if (paragraph == null) {
+      VisualCaretTraversal.probe('    NULL: renderParagraph is null');
+      return null;
+    }
+    if (kDebugMode && paragraph.debugNeedsLayout) {
+      VisualCaretTraversal.probe('    NULL: debugNeedsLayout');
+      return null;
+    }
+    if (text == null || text.isEmpty) {
+      VisualCaretTraversal.probe('    NULL: text null/empty');
+      return null;
+    }
+    if (position.offset < 0 || position.offset > text.length) {
+      VisualCaretTraversal.probe(
+        '    NULL: offset ${position.offset} outside 0..${text.length}',
+      );
       return null;
     }
 
@@ -497,7 +507,15 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       boxes.add(box);
       boxOffsets.add(i);
     }
-    if (boxes.isEmpty) return null;
+    VisualCaretTraversal.probe(
+      '    currentX=${currentX.toStringAsFixed(2)} '
+      'currentY=${currentY.toStringAsFixed(2)} '
+      'boxesOnLine=${boxes.length} of ${text.length}',
+    );
+    if (boxes.isEmpty) {
+      VisualCaretTraversal.probe('    NULL: no boxes matched this line');
+      return null;
+    }
 
     final stops = VisualCaretTraversal.stopsFor(boxes);
     final nextX = VisualCaretTraversal.step(
@@ -507,7 +525,13 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     );
     // Null means the line's visual edge: the caller crosses lines or blocks
     // using the behaviour it already has.
-    if (nextX == null) return null;
+    if (nextX == null) {
+      VisualCaretTraversal.probe(
+        '    NULL: step found no stop ${towardsLeft ? "left" : "right"} of '
+        '${currentX.toStringAsFixed(2)} (stops=${stops.length})',
+      );
+      return null;
+    }
 
     final offset = VisualCaretTraversal.restingOffset(
       boxes,
@@ -515,7 +539,10 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       paragraphDirection: textDirection(),
       offsets: boxOffsets,
     );
-    if (offset == null) return null;
+    if (offset == null) {
+      VisualCaretTraversal.probe('    NULL: restingOffset null at $nextX');
+      return null;
+    }
 
     return VisualCaretPosition(
       path: widget.node.path,
