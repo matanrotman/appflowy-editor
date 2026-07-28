@@ -53,6 +53,25 @@ mixin SelectableMixin<T extends StatefulWidget> on State<T> {
     return null;
   }
 
+  /// The caret position one **visual** step from [position], or null when this
+  /// block cannot answer (no laid-out text, or the line's geometry could not be
+  /// read).
+  ///
+  /// Movement is visual rather than logical: in an RTL paragraph, `towardsLeft`
+  /// always moves the caret leftward on screen, so an embedded English word is
+  /// walked C, B, A and the caret never reverses at a language boundary. See
+  /// `specs/bidi-caret-movement.md` in the Ludwig repo for why, and for why
+  /// logical rune arithmetic cannot express this.
+  ///
+  /// Returning null is the caller's signal to fall back to the existing
+  /// offset-based movement, so blocks that do not implement it are unaffected.
+  Position? getNextVisualCaretPosition(
+    Position position, {
+    required bool towardsLeft,
+  }) {
+    return null;
+  }
+
   /// Return global offset from local offset.
   Offset localToGlobal(
     Offset offset, {

@@ -31,6 +31,9 @@ CommandShortcutEventHandler _arrowLeftCommandHandler = (editorState) {
   if (selection == null) {
     return KeyEventResult.ignored;
   }
+  if (moveCaretVisually(editorState, towardsLeft: true)) {
+    return KeyEventResult.handled;
+  }
   if (isRTL(editorState)) {
     editorState.moveCursorBackward(SelectionMoveRange.character);
   } else {
@@ -38,6 +41,39 @@ CommandShortcutEventHandler _arrowLeftCommandHandler = (editorState) {
   }
   return KeyEventResult.handled;
 };
+
+/// Moves the caret one **visual** step, returning false when this block cannot
+/// answer — at the edge of a line, in a block with no laid-out text, or in one
+/// that does not implement visual traversal — so the caller falls back to the
+/// existing offset arithmetic.
+///
+/// See `specs/bidi-caret-movement.md` in the Ludwig repo. In short: direction
+/// was previously resolved once per BLOCK, so inside an English word embedded
+/// in a Hebrew paragraph the left arrow travelled rightward. Movement now
+/// follows the paragraph visually and never reverses.
+bool moveCaretVisually(
+  EditorState editorState, {
+  required bool towardsLeft,
+}) {
+  final selection = editorState.selection;
+  if (selection == null || !selection.isCollapsed) {
+    return false;
+  }
+  final position = selection.start;
+  final node = editorState.getNodeAtPath(position.path);
+  final next = node?.selectable?.getNextVisualCaretPosition(
+    position,
+    towardsLeft: towardsLeft,
+  );
+  if (next == null) {
+    return false;
+  }
+  editorState.updateSelectionWithReason(
+    Selection.collapsed(next),
+    reason: SelectionUpdateReason.uiEvent,
+  );
+  return true;
+}
 
 // arrow left key + ctrl or command
 // move the cursor to the beginning of the block

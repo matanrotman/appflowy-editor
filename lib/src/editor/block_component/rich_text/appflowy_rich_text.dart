@@ -342,6 +342,26 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       }
     }
 
+    // Visual caret movement (2026-07-28) — see specs/bidi-caret-movement.md.
+    //
+    // At a directional boundary one offset has two homes on the same line, and
+    // the block-wide upstream affinity above picks one of them arbitrarily. A
+    // position produced by visual movement has already measured which home the
+    // caret is in, so honour it.
+    //
+    // Deliberately a SEPARATE branch from the pointer hint above, rather than
+    // relaxing that branch's `> 0.1` different-line guard. That guard is
+    // load-bearing: it is what keeps the validated same-line seam behaviour —
+    // and the deferred embedded-date question — untouched. Only positions this
+    // editor's own movement created reach here, so no existing path changes.
+    //
+    // Horizontal only: vertical geometry and line height come from the offset,
+    // which the code above already resolves correctly (including the empty-line
+    // placeholder case).
+    if (position is VisualCaretPosition && delta?.isNotEmpty == true) {
+      cursorOffset = Offset(position.visualLocalOffset.dx, cursorOffset.dy);
+    }
+
     if (placeholderCursorHeight != null) {
       cursorHeight = max(cursorHeight ?? 0, placeholderCursorHeight);
     }
@@ -422,6 +442,87 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     final start = Position(path: widget.node.path, offset: textRange.start);
     final end = Position(path: widget.node.path, offset: textRange.end);
     return Selection(start: start, end: end);
+  }
+
+  @override
+  Position? getNextVisualCaretPosition(
+    Position position, {
+    required bool towardsLeft,
+  }) {
+    final paragraph = _renderParagraph;
+    final text = widget.node.delta?.toPlainText();
+    if (paragraph == null ||
+        (kDebugMode && paragraph.debugNeedsLayout) ||
+        text == null ||
+        text.isEmpty ||
+        position.offset < 0 ||
+        position.offset > text.length) {
+      return null;
+    }
+
+    // Where the caret is now. If it arrived here by visual movement it already
+    // carries its x — and at a directional boundary that is the ONLY thing that
+    // says which of the two homes it occupies, so it must be preferred over
+    // re-deriving from the offset.
+    final caretOffset = paragraph.getOffsetForCaret(
+      TextPosition(offset: position.offset, affinity: TextAffinity.upstream),
+      Rect.zero,
+    );
+    final currentX = position is VisualCaretPosition
+        ? position.visualLocalOffset.dx
+        : caretOffset.dx;
+    final currentY = position is VisualCaretPosition
+        ? position.visualLocalOffset.dy
+        : caretOffset.dy;
+
+    // The per-character boxes of the caret's own visual line. A visual line is
+    // a contiguous logical range, so `boxes[i]` is the character at
+    // `firstOffset + i` — but only while every character in the range yields a
+    // box. If one does not, the indexing would silently shift, so bail and let
+    // the caller fall back rather than move the caret to a wrong place.
+    final boxes = <TextBox>[];
+    int? firstOffset;
+    for (var i = 0; i < text.length; i++) {
+      final charBoxes = paragraph.getBoxesForSelection(
+        TextSelection(baseOffset: i, extentOffset: i + 1),
+      );
+      if (charBoxes.isEmpty) {
+        if (firstOffset != null) return null;
+        continue;
+      }
+      final box = charBoxes.first;
+      if ((box.top - currentY).abs() > 0.1) {
+        if (firstOffset != null) break;
+        continue;
+      }
+      firstOffset ??= i;
+      boxes.add(box);
+    }
+    if (firstOffset == null || boxes.isEmpty) return null;
+
+    final stops = VisualCaretTraversal.stopsFor(boxes);
+    final nextX = VisualCaretTraversal.step(
+      stops,
+      currentX,
+      towardsLeft: towardsLeft,
+    );
+    // Null means the line's visual edge: the caller crosses lines or blocks
+    // using the behaviour it already has.
+    if (nextX == null) return null;
+
+    final offset = VisualCaretTraversal.restingOffset(
+      boxes,
+      nextX,
+      paragraphDirection: textDirection(),
+      firstOffset: firstOffset,
+    );
+    if (offset == null) return null;
+
+    return VisualCaretPosition(
+      path: widget.node.path,
+      offset: offset,
+      visualLocalOffset: Offset(nextX, currentY),
+    );
   }
 
   @override

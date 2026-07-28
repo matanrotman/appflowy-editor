@@ -11,6 +11,7 @@ export 'document/rules/document_rule.dart';
 export 'document/text_delta.dart';
 export 'legacy/built_in_attribute_keys.dart';
 export 'location/position.dart';
+export 'location/visual_caret_position.dart';
 export 'location/selection.dart';
 export 'transform/operation.dart';
 export 'transform/transaction.dart';
