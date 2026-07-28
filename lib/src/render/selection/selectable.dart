@@ -71,6 +71,7 @@ mixin SelectableMixin<T extends StatefulWidget> on State<T> {
     Position position, {
     required bool towardsLeft,
     bool byWord = false,
+    bool toLineEdge = false,
   }) {
     return null;
   }

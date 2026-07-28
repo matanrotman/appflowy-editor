@@ -50,11 +50,13 @@ mixin DefaultSelectableMixin {
     Position position, {
     required bool towardsLeft,
     bool byWord = false,
+    bool toLineEdge = false,
   }) =>
       forward.getNextVisualCaretPosition(
         position,
         towardsLeft: towardsLeft,
         byWord: byWord,
+        toLineEdge: toLineEdge,
       );
 
   Rect? getCursorRectInPosition(

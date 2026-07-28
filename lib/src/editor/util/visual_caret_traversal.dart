@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/rendering.dart';
 
 /// Visual caret traversal for bidirectional text.
@@ -26,20 +24,6 @@ import 'package:flutter/rendering.dart';
 /// offset per direction once the side is known.
 class VisualCaretTraversal {
   const VisualCaretTraversal._();
-
-  // ⚠️ TEMPORARY INSTRUMENTATION (2026-07-28) — REMOVE once the arrow path is
-  // diagnosed. Writes to a file because the app is launched from the Dock and
-  // has nowhere to print. Ludwig is not sandboxed, so HOME is the real home.
-  static bool probeEnabled = true;
-  static void probe(String message) {
-    if (!probeEnabled) return;
-    try {
-      File('${Platform.environment['HOME']}/ludwig_caret_probe.log')
-          .writeAsStringSync('$message\n', mode: FileMode.append);
-    } catch (_) {
-      // Diagnostics must never break editing.
-    }
-  }
 
   /// Tolerance for treating two measured coordinates as the same point. Text
   /// layout returns doubles that differ in their last bits for what is visually
@@ -196,6 +180,21 @@ class VisualCaretTraversal {
     final before = _isWordCharacter(text[offset - 1]);
     final after = _isWordCharacter(text[offset]);
     return before != after;
+  }
+
+  /// Whether [offset] is where a word BEGINS in its own reading direction.
+  ///
+  /// Word jumps land here rather than on every word edge, so a lone space is
+  /// stepped over instead of being a stop of its own (user, 2026-07-28: "skip
+  /// the lone space and start at the edge of the next word"). Because the caret
+  /// for offset o sits at the LEFT edge of an LTR glyph and the RIGHT edge of an
+  /// RTL one, "the offset where the word starts" already resolves to the right
+  /// side for Hebrew and the left side for English — no direction test needed
+  /// here.
+  static bool isWordStart(String text, int offset) {
+    if (offset < 0 || offset >= text.length) return false;
+    if (!_isWordCharacter(text[offset])) return false;
+    return offset == 0 || !_isWordCharacter(text[offset - 1]);
   }
 
   static bool _isWordCharacter(String character) {

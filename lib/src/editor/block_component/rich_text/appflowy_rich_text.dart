@@ -449,25 +449,20 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     Position position, {
     required bool towardsLeft,
     bool byWord = false,
+    bool toLineEdge = false,
   }) {
     final paragraph = _renderParagraph;
     final text = widget.node.delta?.toPlainText();
     if (paragraph == null) {
-      VisualCaretTraversal.probe('    NULL: renderParagraph is null');
       return null;
     }
     if (kDebugMode && paragraph.debugNeedsLayout) {
-      VisualCaretTraversal.probe('    NULL: debugNeedsLayout');
       return null;
     }
     if (text == null || text.isEmpty) {
-      VisualCaretTraversal.probe('    NULL: text null/empty');
       return null;
     }
     if (position.offset < 0 || position.offset > text.length) {
-      VisualCaretTraversal.probe(
-        '    NULL: offset ${position.offset} outside 0..${text.length}',
-      );
       return null;
     }
 
@@ -516,7 +511,6 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       allOffsets.add(i);
     }
     if (allBoxes.isEmpty) {
-      VisualCaretTraversal.probe('    NULL: paragraph produced no boxes');
       return null;
     }
 
@@ -543,18 +537,13 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       boxOffsets.add(allOffsets[i]);
     }
 
-    VisualCaretTraversal.probe(
-      '    currentX=${currentX.toStringAsFixed(2)} '
-      'currentY=${currentY.toStringAsFixed(2)} '
-      'boxesOnLine=${boxes.length} of ${text.length}',
-    );
     if (boxes.isEmpty) {
-      VisualCaretTraversal.probe('    NULL: no boxes matched this line');
       return null;
     }
 
     var stops = VisualCaretTraversal.stopsFor(boxes);
 
+    final paragraphIsRtl = textDirection() == TextDirection.rtl;
     if (byWord) {
       // Keep only stops that are also word edges, so a word jump lands on a
       // place the character arrows can also reach. Deriving the word edges from
@@ -568,6 +557,24 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
         );
         final rtlSide = sides.rtl;
         final ltrSide = sides.ltr;
+        // In an RTL paragraph, land on word STARTS only, so a lone space
+        // between two words is stepped over rather than being a stop of its own
+        // (user, 2026-07-28: "skip the lone space and start at the edge of the
+        // next word from the right for RTL or left for LTR"). Because the caret
+        // for an offset sits at the LEFT edge of an LTR glyph and the RIGHT edge
+        // of an RTL one, "where the word starts" already resolves to the correct
+        // side per word without a direction test.
+        //
+        // Deliberately NOT applied to LTR paragraphs: there, Option+arrow
+        // landing on word ENDS is the macOS convention every other app follows,
+        // and the fork's own tests assert it ('Welcome to Appflowy' expects
+        // offset 7). Changing plain English was not asked for.
+        if (paragraphIsRtl) {
+          return (rtlSide != null &&
+                  VisualCaretTraversal.isWordStart(text, rtlSide)) ||
+              (ltrSide != null &&
+                  VisualCaretTraversal.isWordStart(text, ltrSide));
+        }
         return (rtlSide != null &&
                 VisualCaretTraversal.isWordBoundary(text, rtlSide)) ||
             (ltrSide != null &&
@@ -575,18 +582,22 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       }).toList();
     }
 
-    final nextX = VisualCaretTraversal.step(
-      stops,
-      currentX,
-      towardsLeft: towardsLeft,
-    );
+    final double? nextX;
+    if (toLineEdge) {
+      // Cmd+arrow: jump straight to this visual line's far edge.
+      final edge = towardsLeft ? stops.first : stops.last;
+      nextX =
+          (edge - currentX).abs() <= VisualCaretTraversal.epsilon ? null : edge;
+    } else {
+      nextX = VisualCaretTraversal.step(
+        stops,
+        currentX,
+        towardsLeft: towardsLeft,
+      );
+    }
     // Null means the line's visual edge: the caller crosses lines or blocks
     // using the behaviour it already has.
     if (nextX == null) {
-      VisualCaretTraversal.probe(
-        '    NULL: step found no stop ${towardsLeft ? "left" : "right"} of '
-        '${currentX.toStringAsFixed(2)} (stops=${stops.length})',
-      );
       return null;
     }
 
@@ -597,7 +608,6 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       offsets: boxOffsets,
     );
     if (offset == null) {
-      VisualCaretTraversal.probe('    NULL: restingOffset null at $nextX');
       return null;
     }
 

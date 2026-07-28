@@ -27,10 +27,8 @@ final CommandShortcutEvent moveCursorLeftCommand = CommandShortcutEvent(
 );
 
 CommandShortcutEventHandler _arrowLeftCommandHandler = (editorState) {
-  VisualCaretTraversal.probe('--- arrow LEFT handler entered ---');
   final selection = editorState.selection;
   if (selection == null) {
-    VisualCaretTraversal.probe('  selection is null -> ignored');
     return KeyEventResult.ignored;
   }
   if (moveCaretVisually(editorState, towardsLeft: true)) {
@@ -57,35 +55,62 @@ bool moveCaretVisually(
   EditorState editorState, {
   required bool towardsLeft,
   bool byWord = false,
+  bool toLineEdge = false,
 }) {
   final selection = editorState.selection;
   if (selection == null || !selection.isCollapsed) {
-    VisualCaretTraversal.probe(
-      '  moveCaretVisually: selection null=${selection == null} '
-      'collapsed=${selection?.isCollapsed}',
-    );
     return false;
   }
   final position = selection.start;
   final node = editorState.getNodeAtPath(position.path);
   final selectable = node?.selectable;
-  VisualCaretTraversal.probe(
-    '  node=${node?.type} selectable=${selectable.runtimeType} '
-    'positionType=${position.runtimeType} offset=${position.offset}',
-  );
   final next = selectable?.getNextVisualCaretPosition(
     position,
     towardsLeft: towardsLeft,
     byWord: byWord,
-  );
-  VisualCaretTraversal.probe(
-    '  -> next=${next == null ? "NULL (falls back to old behaviour)" : "${next.runtimeType} offset=${next.offset}"}',
+    toLineEdge: toLineEdge,
   );
   if (next == null) {
     return false;
   }
   editorState.updateSelectionWithReason(
     Selection.collapsed(next),
+    reason: SelectionUpdateReason.uiEvent,
+  );
+  return true;
+}
+
+/// Extends the selection one **visual** step, keeping the anchor and moving the
+/// extent — the selecting counterpart of [moveCaretVisually].
+///
+/// D2 in specs/bidi-caret-movement.md: the user chose selection to move
+/// visually, consistently with the caret, having been shown that in mixed text
+/// a visually-extended highlight can arrive in pieces because visually adjacent
+/// letters are not always adjacent in the underlying text. If that ever looks
+/// wrong, it is that decision showing — reopen it rather than "fixing" it here.
+bool extendSelectionVisually(
+  EditorState editorState, {
+  required bool towardsLeft,
+  bool byWord = false,
+  bool toLineEdge = false,
+}) {
+  final selection = editorState.selection;
+  if (selection == null) {
+    return false;
+  }
+  final extent = selection.end;
+  final node = editorState.getNodeAtPath(extent.path);
+  final next = node?.selectable?.getNextVisualCaretPosition(
+    extent,
+    towardsLeft: towardsLeft,
+    byWord: byWord,
+    toLineEdge: toLineEdge,
+  );
+  if (next == null) {
+    return false;
+  }
+  editorState.updateSelectionWithReason(
+    selection.copyWith(end: next),
     reason: SelectionUpdateReason.uiEvent,
   );
   return true;
@@ -196,6 +221,9 @@ CommandShortcutEventHandler _moveCursorLeftWordSelectCommandHandler =
   if (selection == null) {
     return KeyEventResult.ignored;
   }
+  if (extendSelectionVisually(editorState, towardsLeft: true, byWord: true)) {
+    return KeyEventResult.handled;
+  }
   var forward = true;
   if (isRTL(editorState)) {
     forward = false;
@@ -229,6 +257,9 @@ CommandShortcutEventHandler _moveCursorLeftSelectCommandHandler =
   final selection = editorState.selection;
   if (selection == null) {
     return KeyEventResult.ignored;
+  }
+  if (extendSelectionVisually(editorState, towardsLeft: true)) {
+    return KeyEventResult.handled;
   }
   var forward = true;
   if (isRTL(editorState)) {
