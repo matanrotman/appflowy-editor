@@ -475,30 +475,29 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
         ? position.visualLocalOffset.dy
         : caretOffset.dy;
 
-    // The per-character boxes of the caret's own visual line. A visual line is
-    // a contiguous logical range, so `boxes[i]` is the character at
-    // `firstOffset + i` — but only while every character in the range yields a
-    // box. If one does not, the indexing would silently shift, so bail and let
-    // the caller fall back rather than move the caret to a wrong place.
+    // The per-character boxes of the caret's own visual line, each kept WITH
+    // its character offset.
+    //
+    // Do not assume the line is a contiguous run of offsets. In real wrapped
+    // text some characters — notably whitespace consumed by a soft wrap —
+    // return no box at all, so `firstOffset + i` mis-numbers every box after
+    // the first gap. An earlier version bailed out whenever that happened,
+    // which made this return null for every multi-line paragraph and sent the
+    // caret silently back to the old behaviour (found by instrumenting the
+    // running app, 2026-07-28).
     final boxes = <TextBox>[];
-    int? firstOffset;
+    final boxOffsets = <int>[];
     for (var i = 0; i < text.length; i++) {
       final charBoxes = paragraph.getBoxesForSelection(
         TextSelection(baseOffset: i, extentOffset: i + 1),
       );
-      if (charBoxes.isEmpty) {
-        if (firstOffset != null) return null;
-        continue;
-      }
+      if (charBoxes.isEmpty) continue;
       final box = charBoxes.first;
-      if ((box.top - currentY).abs() > 0.1) {
-        if (firstOffset != null) break;
-        continue;
-      }
-      firstOffset ??= i;
+      if ((box.top - currentY).abs() > 0.1) continue;
       boxes.add(box);
+      boxOffsets.add(i);
     }
-    if (firstOffset == null || boxes.isEmpty) return null;
+    if (boxes.isEmpty) return null;
 
     final stops = VisualCaretTraversal.stopsFor(boxes);
     final nextX = VisualCaretTraversal.step(
@@ -514,7 +513,7 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       boxes,
       nextX,
       paragraphDirection: textDirection(),
-      firstOffset: firstOffset,
+      offsets: boxOffsets,
     );
     if (offset == null) return null;
 
@@ -556,7 +555,8 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     // whichever side each is on in the paragraph's direction. min/max
     // makes it direction-agnostic.
     final caretTop = paragraph.getOffsetForCaret(textPosition, Rect.zero).dy;
-    final lineMidY = caretTop + paragraph.getFullHeightForCaret(textPosition) / 2;
+    final lineMidY =
+        caretTop + paragraph.getFullHeightForCaret(textPosition) / 2;
     final a = paragraph.getPositionForOffset(Offset(-10, lineMidY)).offset;
     final b = paragraph
         .getPositionForOffset(Offset(paragraph.size.width + 10, lineMidY))

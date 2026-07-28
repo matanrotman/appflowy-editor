@@ -102,10 +102,15 @@ class VisualCaretTraversal {
   /// [insertionOffset].
   ///
   /// `boxes[i]` must be the box of the character at offset `firstOffset + i`.
+  /// Pass [offsets] when the boxes are not a contiguous run — `offsets[i]` is
+  /// then the character offset of `boxes[i]`. Real wrapped text needs this:
+  /// characters consumed by a soft wrap return no box at all, so assuming
+  /// `firstOffset + i` silently mis-numbers every box after the first gap.
   static ({int? rtl, int? ltr}) sidesAt(
     List<TextBox> boxes,
     double x, {
     int firstOffset = 0,
+    List<int>? offsets,
   }) {
     int? rtl;
     int? ltr;
@@ -113,7 +118,7 @@ class VisualCaretTraversal {
     for (var i = 0; i < boxes.length; i++) {
       final box = boxes[i];
       final isLtr = box.direction == TextDirection.ltr;
-      final start = firstOffset + i;
+      final start = offsets != null ? offsets[i] : firstOffset + i;
       final end = start + 1;
 
       // For an LTR glyph the caret before it is at its left edge and the caret
@@ -172,8 +177,9 @@ class VisualCaretTraversal {
     double x, {
     required TextDirection paragraphDirection,
     int firstOffset = 0,
+    List<int>? offsets,
   }) {
-    final sides = sidesAt(boxes, x, firstOffset: firstOffset);
+    final sides = sidesAt(boxes, x, firstOffset: firstOffset, offsets: offsets);
     return paragraphDirection == TextDirection.rtl ? sides.rtl : sides.ltr;
   }
 
