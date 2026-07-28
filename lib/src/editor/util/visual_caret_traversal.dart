@@ -183,6 +183,31 @@ class VisualCaretTraversal {
     return paragraphDirection == TextDirection.rtl ? sides.rtl : sides.ltr;
   }
 
+  /// Whether a caret sitting at character offset [offset] is at a WORD edge.
+  ///
+  /// Word jumps have to agree with visual movement or the two feel unrelated:
+  /// the caret moves one visual step at a time, so a word jump must land on a
+  /// visual stop that also happens to be a word edge — not on whatever offset
+  /// logical word arithmetic produces, which in bidi text can be somewhere else
+  /// on the line entirely. That mismatch is what made Option+arrow skip a lone
+  /// space and then leap to the end of the sentence (reported 2026-07-28).
+  static bool isWordBoundary(String text, int offset) {
+    if (offset <= 0 || offset >= text.length) return true;
+    final before = _isWordCharacter(text[offset - 1]);
+    final after = _isWordCharacter(text[offset]);
+    return before != after;
+  }
+
+  static bool _isWordCharacter(String character) {
+    if (character.trim().isEmpty) return false;
+    final code = character.runes.first;
+    // Letters and digits count; punctuation does not, so "20.4.26," breaks into
+    // pieces the way it visually reads.
+    if (code >= 0x0030 && code <= 0x0039) return true;
+    if (directionOf(character) != null) return true;
+    return false;
+  }
+
   /// The strong direction of [character], or null when it is neutral.
   ///
   /// Deliberately covers the strong ranges that matter here rather than

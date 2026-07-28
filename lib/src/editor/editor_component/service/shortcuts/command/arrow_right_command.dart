@@ -82,6 +82,9 @@ CommandShortcutEventHandler _moveCursorToRightWordCommandHandler =
   if (selection == null) {
     return KeyEventResult.ignored;
   }
+  if (moveCaretVisually(editorState, towardsLeft: false, byWord: true)) {
+    return KeyEventResult.handled;
+  }
 
   final node = editorState.getNodeAtPath(selection.end.path);
   final delta = node?.delta;

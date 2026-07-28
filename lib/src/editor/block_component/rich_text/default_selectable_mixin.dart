@@ -49,8 +49,13 @@ mixin DefaultSelectableMixin {
   Position? getNextVisualCaretPosition(
     Position position, {
     required bool towardsLeft,
+    bool byWord = false,
   }) =>
-      forward.getNextVisualCaretPosition(position, towardsLeft: towardsLeft);
+      forward.getNextVisualCaretPosition(
+        position,
+        towardsLeft: towardsLeft,
+        byWord: byWord,
+      );
 
   Rect? getCursorRectInPosition(
     Position position, {

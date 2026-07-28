@@ -65,9 +65,12 @@ mixin SelectableMixin<T extends StatefulWidget> on State<T> {
   ///
   /// Returning null is the caller's signal to fall back to the existing
   /// offset-based movement, so blocks that do not implement it are unaffected.
+  /// Set [byWord] to jump to the next visual WORD edge instead of the next
+  /// character.
   Position? getNextVisualCaretPosition(
     Position position, {
     required bool towardsLeft,
+    bool byWord = false,
   }) {
     return null;
   }

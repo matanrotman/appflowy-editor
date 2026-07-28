@@ -448,6 +448,7 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
   Position? getNextVisualCaretPosition(
     Position position, {
     required bool towardsLeft,
+    bool byWord = false,
   }) {
     final paragraph = _renderParagraph;
     final text = widget.node.delta?.toPlainText();
@@ -552,7 +553,28 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       return null;
     }
 
-    final stops = VisualCaretTraversal.stopsFor(boxes);
+    var stops = VisualCaretTraversal.stopsFor(boxes);
+
+    if (byWord) {
+      // Keep only stops that are also word edges, so a word jump lands on a
+      // place the character arrows can also reach. Deriving the word edges from
+      // the same visual stops is the whole point: logical word arithmetic can
+      // land somewhere else on the line entirely in bidi text.
+      stops = stops.where((stop) {
+        final sides = VisualCaretTraversal.sidesAt(
+          boxes,
+          stop,
+          offsets: boxOffsets,
+        );
+        final rtlSide = sides.rtl;
+        final ltrSide = sides.ltr;
+        return (rtlSide != null &&
+                VisualCaretTraversal.isWordBoundary(text, rtlSide)) ||
+            (ltrSide != null &&
+                VisualCaretTraversal.isWordBoundary(text, ltrSide));
+      }).toList();
+    }
+
     final nextX = VisualCaretTraversal.step(
       stops,
       currentX,

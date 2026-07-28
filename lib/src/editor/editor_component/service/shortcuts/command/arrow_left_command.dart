@@ -56,6 +56,7 @@ CommandShortcutEventHandler _arrowLeftCommandHandler = (editorState) {
 bool moveCaretVisually(
   EditorState editorState, {
   required bool towardsLeft,
+  bool byWord = false,
 }) {
   final selection = editorState.selection;
   if (selection == null || !selection.isCollapsed) {
@@ -75,6 +76,7 @@ bool moveCaretVisually(
   final next = selectable?.getNextVisualCaretPosition(
     position,
     towardsLeft: towardsLeft,
+    byWord: byWord,
   );
   VisualCaretTraversal.probe(
     '  -> next=${next == null ? "NULL (falls back to old behaviour)" : "${next.runtimeType} offset=${next.offset}"}',
@@ -127,6 +129,12 @@ CommandShortcutEventHandler _moveCursorToLeftWordCommandHandler =
   final selection = editorState.selection;
   if (selection == null) {
     return KeyEventResult.ignored;
+  }
+  // Word jumps follow the same visual march as the character arrows; see
+  // moveCaretVisually. Falls through to the old logical arithmetic when this
+  // block cannot answer.
+  if (moveCaretVisually(editorState, towardsLeft: true, byWord: true)) {
+    return KeyEventResult.handled;
   }
 
   final node = editorState.getNodeAtPath(selection.end.path);
