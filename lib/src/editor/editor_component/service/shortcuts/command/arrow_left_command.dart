@@ -80,14 +80,18 @@ bool moveCaretVisually(
   return true;
 }
 
-/// Extends the selection one **visual** step, keeping the anchor and moving the
-/// extent — the selecting counterpart of [moveCaretVisually].
+/// ⚠️ NOT WIRED — D2 was tried and REVERSED (user, 2026-07-28: "Looks odd, I
+/// hate it").
 ///
-/// D2 in specs/bidi-caret-movement.md: the user chose selection to move
-/// visually, consistently with the caret, having been shown that in mixed text
-/// a visually-extended highlight can arrive in pieces because visually adjacent
-/// letters are not always adjacent in the underlying text. If that ever looks
-/// wrong, it is that decision showing — reopen it rather than "fixing" it here.
+/// The decision record in specs/bidi-caret-movement.md predicted exactly this:
+/// in mixed text a visually-extended highlight arrives in pieces, because
+/// visually adjacent letters are not adjacent in the underlying text. It was
+/// built, seen, and rejected on sight — which is the fastest this could have
+/// been settled, and why it was worth building rather than arguing about.
+///
+/// Selection therefore stays LOGICAL (contiguous highlight, Word's behaviour)
+/// while the caret moves visually. Kept rather than deleted so re-wiring is one
+/// line if the decision is ever revisited; do NOT re-wire it without asking.
 bool extendSelectionVisually(
   EditorState editorState, {
   required bool towardsLeft,
@@ -221,9 +225,6 @@ CommandShortcutEventHandler _moveCursorLeftWordSelectCommandHandler =
   if (selection == null) {
     return KeyEventResult.ignored;
   }
-  if (extendSelectionVisually(editorState, towardsLeft: true, byWord: true)) {
-    return KeyEventResult.handled;
-  }
   var forward = true;
   if (isRTL(editorState)) {
     forward = false;
@@ -257,9 +258,6 @@ CommandShortcutEventHandler _moveCursorLeftSelectCommandHandler =
   final selection = editorState.selection;
   if (selection == null) {
     return KeyEventResult.ignored;
-  }
-  if (extendSelectionVisually(editorState, towardsLeft: true)) {
-    return KeyEventResult.handled;
   }
   var forward = true;
   if (isRTL(editorState)) {

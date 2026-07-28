@@ -148,9 +148,6 @@ CommandShortcutEventHandler _moveCursorRightWordSelectCommandHandler =
   if (selection == null) {
     return KeyEventResult.ignored;
   }
-  if (extendSelectionVisually(editorState, towardsLeft: false, byWord: true)) {
-    return KeyEventResult.handled;
-  }
   var forward = false;
   if (isRTL(editorState)) {
     forward = true;
@@ -184,9 +181,6 @@ CommandShortcutEventHandler _moveCursorRightSelectCommandHandler =
   final selection = editorState.selection;
   if (selection == null) {
     return KeyEventResult.ignored;
-  }
-  if (extendSelectionVisually(editorState, towardsLeft: false)) {
-    return KeyEventResult.handled;
   }
   var forward = false;
   if (isRTL(editorState)) {
