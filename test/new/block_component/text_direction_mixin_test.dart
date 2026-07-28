@@ -40,12 +40,18 @@ void main() {
       expect(direction, TextDirection.ltr);
     });
 
-    test('fallback to layout direction', () {
+    // [fork:rtl] CHANGED 2026-07-28. This asserted that a paragraph of plainly
+    // RTL Arabic renders LTR, because it carried no direction attribute of its
+    // own. That is the defect the user reported: the first strong letter must
+    // dictate the paragraph's direction. See calculateNodeDirection.
+    test(
+        'a paragraph with no direction of its own follows its first strong '
+        'letter, not the layout', () {
       final node = paragraphNode(
         text: 'سلام',
       );
       final direction = TextDirectionTest(node: node).calculateTextDirection();
-      expect(direction, TextDirection.ltr);
+      expect(direction, TextDirection.rtl);
     });
 
     test('fallback to default text direction', () {
@@ -165,7 +171,12 @@ void main() {
       expect(direction, TextDirection.rtl);
     });
 
-    test('use previous node direction (rtl) only when current is auto', () {
+    // [fork:rtl] CHANGED 2026-07-28. A paragraph with no direction attribute is
+    // now treated the same as `auto` — it decides for itself — so when it has no
+    // strong letter at all ('\$' is neutral) it inherits its neighbour rather
+    // than snapping to the layout direction. Under the old rule only an explicit
+    // `auto` inherited, which is what let a page-level default win over the text.
+    test('a neutral-only paragraph inherits the previous node direction', () {
       final node = pageNode(
         children: [
           paragraphNode(
@@ -181,7 +192,7 @@ void main() {
           TextDirectionTest(node: node.children.last).calculateTextDirection(
         layoutDirection: TextDirection.ltr,
       );
-      expect(direction, TextDirection.ltr);
+      expect(direction, TextDirection.rtl);
     });
 
     test(

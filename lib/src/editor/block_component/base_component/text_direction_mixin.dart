@@ -58,39 +58,49 @@ TextDirection calculateNodeDirection({
   String? defaultTextDirection,
   TextDirection? lastDirection,
 }) {
-  // if the block component has a text direction attribute which is not auto,
-  // use it
-  final value = node.direction(defaultTextDirection);
-  if (value != null && value != blockComponentTextDirectionAuto) {
-    final direction = value.toTextDirection();
+  // [fork:rtl] A PARAGRAPH's own direction wins; otherwise its FIRST STRONG
+  // LETTER decides. (User rule, 2026-07-28: "Paragraph direction overrides page
+  // direction and first strong letter (even pasted) dictates paragraph
+  // direction.")
+  //
+  // Read the node's OWN attribute here rather than `node.direction(default)`,
+  // which falls back to `defaultTextDirection` — the page/app default — and so
+  // handed a page-level RTL setting back as though the paragraph had asked for
+  // it. That short-circuited below and the text was never consulted, which is
+  // why an English paragraph on an RTL page rendered RTL and its arrow keys
+  // behaved as RTL. A page default is a fallback, not a per-paragraph choice.
+  final ownDirection = node.attributes[blockComponentTextDirection] as String?;
+  if (ownDirection != null && ownDirection != blockComponentTextDirectionAuto) {
+    final direction = ownDirection.toTextDirection();
     if (direction != null) {
       return direction;
     }
   }
 
-  if (value == blockComponentTextDirectionAuto) {
-    if (lastDirection != null) {
-      defaultTextDirection = lastDirection.name;
-    } else {
-      defaultTextDirection =
-          _getDirectionFromPreviousOrParentNode(node, defaultTextDirection)
-                  ?.name ??
-              defaultTextDirection;
+  // No explicit paragraph direction: the paragraph decides for itself. These
+  // only refine the FALLBACK — the text still wins below when it has a strong
+  // character, which is what makes pasted text take effect with no extra work
+  // (a paste changes the delta, and this recomputes on the next build).
+  if (lastDirection != null) {
+    defaultTextDirection = lastDirection.name;
+  } else {
+    defaultTextDirection =
+        _getDirectionFromPreviousOrParentNode(node, defaultTextDirection)
+                ?.name ??
+            defaultTextDirection;
+  }
+
+  final text = node.delta?.toPlainText();
+  if (text != null && text.isNotEmpty) {
+    final detected = determineTextDirection(text);
+    if (detected != null) {
+      return detected;
     }
   }
 
-  // if the value is null or the text is null or empty,
-  // use the default text direction
-  final text = node.delta?.toPlainText();
-  if (value == null || text == null || text.isEmpty) {
-    return defaultTextDirection?.toTextDirection() ?? layoutDirection;
-  }
-
-  // if the value is auto and the text isn't null or empty,
-  // calculate the text direction by the text
-  return determineTextDirection(text) ??
-      defaultTextDirection?.toTextDirection() ??
-      layoutDirection;
+  // Empty, or nothing with strong directionality (e.g. only '@' or digits):
+  // fall back to the neighbours, then the page/app default, then the layout.
+  return defaultTextDirection?.toTextDirection() ?? layoutDirection;
 }
 
 TextDirection? _getDirectionFromPreviousOrParentNode(
