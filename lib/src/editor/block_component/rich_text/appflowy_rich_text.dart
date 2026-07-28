@@ -488,25 +488,60 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     // The per-character boxes of the caret's own visual line, each kept WITH
     // its character offset.
     //
-    // Do not assume the line is a contiguous run of offsets. In real wrapped
-    // text some characters — notably whitespace consumed by a soft wrap —
-    // return no box at all, so `firstOffset + i` mis-numbers every box after
-    // the first gap. An earlier version bailed out whenever that happened,
-    // which made this return null for every multi-line paragraph and sent the
-    // caret silently back to the old behaviour (found by instrumenting the
-    // running app, 2026-07-28).
-    final boxes = <TextBox>[];
-    final boxOffsets = <int>[];
+    // Two things this must NOT assume, both learned by instrumenting the
+    // running app (2026-07-28):
+    //
+    // 1. That a line is a contiguous run of offsets. Characters consumed by a
+    //    soft wrap return no box at all, so `firstOffset + i` mis-numbers every
+    //    box after the first gap.
+    // 2. That the caret's dy equals a glyph box's top. It does not: the editor
+    //    applies a line-height multiplier, so the caret sits above the glyph
+    //    box — measured at dy=-0.40 against boxes on a different y. Comparing
+    //    the two directly rejected EVERY box and made this return null for
+    //    every paragraph in the app, while a bare TextPainter (no line height)
+    //    matched exactly and hid the bug in tests.
+    //
+    // So: collect every box, then pick the visual line whose vertical BAND is
+    // nearest the caret, which needs no coincidence between the two coordinate
+    // conventions.
+    final allBoxes = <TextBox>[];
+    final allOffsets = <int>[];
     for (var i = 0; i < text.length; i++) {
       final charBoxes = paragraph.getBoxesForSelection(
         TextSelection(baseOffset: i, extentOffset: i + 1),
       );
       if (charBoxes.isEmpty) continue;
-      final box = charBoxes.first;
-      if ((box.top - currentY).abs() > 0.1) continue;
-      boxes.add(box);
-      boxOffsets.add(i);
+      allBoxes.add(charBoxes.first);
+      allOffsets.add(i);
     }
+    if (allBoxes.isEmpty) {
+      VisualCaretTraversal.probe('    NULL: paragraph produced no boxes');
+      return null;
+    }
+
+    double distanceToBand(TextBox box) {
+      if (currentY >= box.top && currentY <= box.bottom) return 0;
+      return currentY < box.top ? box.top - currentY : currentY - box.bottom;
+    }
+
+    var lineTop = allBoxes.first.top;
+    var bestDistance = distanceToBand(allBoxes.first);
+    for (final box in allBoxes) {
+      final distance = distanceToBand(box);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        lineTop = box.top;
+      }
+    }
+
+    final boxes = <TextBox>[];
+    final boxOffsets = <int>[];
+    for (var i = 0; i < allBoxes.length; i++) {
+      if ((allBoxes[i].top - lineTop).abs() > 0.1) continue;
+      boxes.add(allBoxes[i]);
+      boxOffsets.add(allOffsets[i]);
+    }
+
     VisualCaretTraversal.probe(
       '    currentX=${currentX.toStringAsFixed(2)} '
       'currentY=${currentY.toStringAsFixed(2)} '
