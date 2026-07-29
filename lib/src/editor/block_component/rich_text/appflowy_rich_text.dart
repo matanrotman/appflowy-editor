@@ -481,8 +481,16 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
         ? position.visualLocalOffset.dy
         : caretOffset.dy;
 
-    // The per-character boxes of the WHOLE paragraph, each kept with its
-    // character offset, then grouped into visual lines.
+    // The per-character boxes of the caret's OWN visual line, each kept with
+    // its character offset.
+    //
+    // ⚠️ Scoped to the line on purpose. Measuring the whole block cost ~3.5µs
+    // per character of it, on EVERY arrow press: 14ms on a 4,000-character
+    // paragraph, which is a whole frame's budget spent before the editor does
+    // anything else, and it is why a pasted page felt like treacle and the
+    // keyboard stalled under key repeat (reported and measured 2026-07-29). A
+    // visual line is bounded by the page width, so this is flat in the length
+    // of the block.
     //
     // Two things this must NOT assume, both learned by instrumenting the
     // running app (2026-07-28):
@@ -493,21 +501,73 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     // 2. That the caret's dy equals a glyph box's top. It does not: the editor
     //    applies a line-height multiplier, so the caret sits above the glyph
     //    box — measured at dy=-0.40 against boxes on a different y.
-    final allBoxes = <TextBox>[];
-    final allOffsets = <int>[];
-    for (var i = 0; i < text.length; i++) {
+    final lines = <VisualLine>[];
+    final seenLineTops = <int>{};
+
+    TextBox? boxAt(int offset) {
+      if (offset < 0 || offset >= text.length) return null;
       final charBoxes = paragraph.getBoxesForSelection(
-        TextSelection(baseOffset: i, extentOffset: i + 1),
+        TextSelection(baseOffset: offset, extentOffset: offset + 1),
       );
-      if (charBoxes.isEmpty) continue;
-      allBoxes.add(charBoxes.first);
-      allOffsets.add(i);
-    }
-    if (allBoxes.isEmpty) {
-      return null;
+      return charBoxes.isEmpty ? null : charBoxes.first;
     }
 
-    final lines = VisualCaretTraversal.groupIntoLines(allBoxes, allOffsets);
+    /// Measures the visual line the character at [seed] is drawn on and appends
+    /// it, or returns false when there is none (past either end of the text, or
+    /// a line already measured).
+    ///
+    /// The line is found by growing outward from [seed] while the glyph boxes
+    /// stay on the same row, which works because a soft wrap splits the text at
+    /// a LOGICAL point: a visual line is always a contiguous range of offsets,
+    /// however its runs are visually reordered inside it.
+    ///
+    /// ⚠️ Deliberately NOT `getLineBoundaryInPosition`, which was tried first
+    /// and is wrong here. That helper finds a line by hit-testing its two
+    /// horizontal extremes — correct in one-directional text, but in a mixed
+    /// line the leftmost and rightmost glyphs are in the MIDDLE of the logical
+    /// range. On the repro sentence it reported the line as offsets 39..47
+    /// instead of 39..79, and leftward movement through the embedded English
+    /// jumped from its end to its start (caught by the 158-step walk, which is
+    /// why that harness exists).
+    bool addLineFrom(int seed) {
+      final seedBox = boxAt(seed);
+      if (seedBox == null) return false;
+      final top = seedBox.top;
+      if (!seenLineTops.add((top * 10).round())) return false;
+
+      final boxes = <TextBox>[seedBox];
+      final offsets = <int>[seed];
+      for (var i = seed - 1; i >= 0; i--) {
+        final box = boxAt(i);
+        if (box == null ||
+            (box.top - top).abs() > VisualCaretTraversal.lineEpsilon) {
+          break;
+        }
+        boxes.insert(0, box);
+        offsets.insert(0, i);
+      }
+      for (var i = seed + 1; i < text.length; i++) {
+        final box = boxAt(i);
+        if (box == null ||
+            (box.top - top).abs() > VisualCaretTraversal.lineEpsilon) {
+          break;
+        }
+        boxes.add(box);
+        offsets.add(i);
+      }
+      lines.add(VisualLine(top: top, boxes: boxes, offsets: offsets));
+      lines.sort((a, b) => a.top.compareTo(b.top));
+      return true;
+    }
+
+    // The caret's offset sits BETWEEN two characters, and at a soft wrap those
+    // two are on different lines, so seed from both and let the caret's own y
+    // pick the winner below.
+    addLineFrom(position.offset);
+    addLineFrom(position.offset - 1);
+    if (lines.isEmpty) {
+      return null;
+    }
 
     // The y the RENDERER draws a caret at, per line — asked of the paragraph
     // rather than derived from the glyph boxes.
@@ -534,12 +594,14 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
           Rect.zero,
         )
         .dy;
-    final caretYs = lines.map(caretYOf).toList();
+    final caretYs = <VisualLine, double>{};
+    double caretY(int index) =>
+        caretYs.putIfAbsent(lines[index], () => caretYOf(lines[index]));
 
     var lineIndex = 0;
-    var bestDistance = (caretYs.first - currentY).abs();
+    var bestDistance = (caretY(0) - currentY).abs();
     for (var i = 1; i < lines.length; i++) {
-      final distance = (caretYs[i] - currentY).abs();
+      final distance = (caretY(i) - currentY).abs();
       if (distance < bestDistance) {
         bestDistance = distance;
         lineIndex = i;
@@ -561,7 +623,7 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     /// it anyway.
     List<double> stopsOnLine(int index) {
       final line = lines[index];
-      final lineCaretY = caretYs[index];
+      final lineCaretY = caretY(index);
       return VisualCaretTraversal.stopsFor(line.boxes).where((stop) {
         final resting = VisualCaretTraversal.restingOffset(
           line.boxes,
@@ -650,17 +712,43 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
         // continues on the line ABOVE. Either way the caret arrives at the far
         // side — leftward movement lands on the target line's rightmost stop —
         // which is what wrapping around a line looks like.
+        //
+        // Neighbouring lines are measured one at a time, and only when the
+        // caret actually reaches an edge, so the ordinary keypress in the
+        // middle of a line still measures exactly one line.
         final step = towardsLeft
             ? (paragraphIsRtl ? 1 : -1)
             : (paragraphIsRtl ? -1 : 1);
-        for (var i = lineIndex + step; i >= 0 && i < lines.length; i += step) {
+        var i = lineIndex + step;
+        while (true) {
+          if (i < 0 || i >= lines.length) {
+            // Reach one line further out, past whichever end of the measured
+            // set we are at. Because a line is a contiguous range of offsets,
+            // the character just outside it belongs to the neighbouring line.
+            final edgeLine = i < 0 ? lines.first : lines.last;
+            final seed = i < 0
+                ? edgeLine.offsets.first - 1
+                : edgeLine.offsets.last + 1;
+            final grew = addLineFrom(seed);
+            if (!grew) break;
+            // groupIntoLines keeps `lines` sorted by top, so a line added above
+            // shifts every index down by one.
+            if (i < 0) {
+              i = 0;
+              lineIndex += 1;
+              landingLine += 1;
+            }
+            continue;
+          }
           // A word jump can find no stop at all on a line it passes over, so
           // keep going rather than stalling there.
           final candidates = stopsOnLine(i);
-          if (candidates.isEmpty) continue;
-          nextX = towardsLeft ? candidates.last : candidates.first;
-          landingLine = i;
-          break;
+          if (candidates.isNotEmpty) {
+            nextX = towardsLeft ? candidates.last : candidates.first;
+            landingLine = i;
+            break;
+          }
+          i += step;
         }
       }
     }
@@ -684,7 +772,7 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     return VisualCaretPosition(
       path: widget.node.path,
       offset: offset,
-      visualLocalOffset: Offset(nextX, caretYs[landingLine]),
+      visualLocalOffset: Offset(nextX, caretY(landingLine)),
     );
   }
 
