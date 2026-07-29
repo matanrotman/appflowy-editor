@@ -30,6 +30,36 @@ class VisualCaretTraversal {
   /// a single position.
   static const double epsilon = 0.5;
 
+  /// Tolerance for deciding two glyph boxes share a visual line, and for
+  /// matching a caret's y against a line's. Lines are ~20pt apart, so this is
+  /// generous without ever merging two of them.
+  static const double lineEpsilon = 0.1;
+
+  /// The glyph boxes of [boxes] grouped into visual lines, top-most first.
+  ///
+  /// `boxes[i]` is the box of the character at `offsets[i]`. Characters
+  /// consumed by a soft wrap return no box at all, so the offsets are NOT
+  /// assumed to be contiguous — assuming that mis-numbered every box after the
+  /// first gap when this was first built (2026-07-28).
+  static List<VisualLine> groupIntoLines(
+    List<TextBox> boxes,
+    List<int> offsets,
+  ) {
+    final lines = <VisualLine>[];
+    for (var i = 0; i < boxes.length; i++) {
+      final box = boxes[i];
+      final line = lines.where((l) => (l.top - box.top).abs() <= lineEpsilon);
+      if (line.isEmpty) {
+        lines.add(VisualLine(top: box.top, boxes: [box], offsets: [offsets[i]]));
+      } else {
+        line.first.boxes.add(box);
+        line.first.offsets.add(offsets[i]);
+      }
+    }
+    lines.sort((a, b) => a.top.compareTo(b.top));
+    return lines;
+  }
+
   /// Every distinct caret position on [boxes], ordered visually left to right.
   ///
   /// [boxes] are the per-character boxes of ONE visual line, `boxes[i]` being
@@ -234,4 +264,28 @@ class VisualCaretTraversal {
 
     return null;
   }
+}
+
+/// One visual line's glyph boxes, each kept with the character offset it draws.
+///
+/// A "visual line" is a row of the laid-out paragraph — what a soft wrap
+/// creates. It is not a block and not a sentence, and in bidirectional text its
+/// offsets are not in visual order: the mixed line
+/// `…בעברית This is what…` holds a descending Hebrew run and an ascending
+/// English one side by side.
+class VisualLine {
+  VisualLine({
+    required this.top,
+    required this.boxes,
+    required this.offsets,
+  });
+
+  /// The top of this line's glyph boxes. **Not** the y a caret is drawn at:
+  /// the editor's line-height multiplier puts the caret above the glyph box
+  /// (measured at -0.40), and comparing the two conventions directly is what
+  /// made every caret past the first line resolve to the line above it.
+  final double top;
+
+  final List<TextBox> boxes;
+  final List<int> offsets;
 }

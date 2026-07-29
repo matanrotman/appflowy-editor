@@ -481,8 +481,8 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
         ? position.visualLocalOffset.dy
         : caretOffset.dy;
 
-    // The per-character boxes of the caret's own visual line, each kept WITH
-    // its character offset.
+    // The per-character boxes of the WHOLE paragraph, each kept with its
+    // character offset, then grouped into visual lines.
     //
     // Two things this must NOT assume, both learned by instrumenting the
     // running app (2026-07-28):
@@ -492,14 +492,7 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     //    box after the first gap.
     // 2. That the caret's dy equals a glyph box's top. It does not: the editor
     //    applies a line-height multiplier, so the caret sits above the glyph
-    //    box — measured at dy=-0.40 against boxes on a different y. Comparing
-    //    the two directly rejected EVERY box and made this return null for
-    //    every paragraph in the app, while a bare TextPainter (no line height)
-    //    matched exactly and hid the bug in tests.
-    //
-    // So: collect every box, then pick the visual line whose vertical BAND is
-    // nearest the caret, which needs no coincidence between the two coordinate
-    // conventions.
+    //    box — measured at dy=-0.40 against boxes on a different y.
     final allBoxes = <TextBox>[];
     final allOffsets = <int>[];
     for (var i = 0; i < text.length; i++) {
@@ -514,46 +507,91 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       return null;
     }
 
-    double distanceToBand(TextBox box) {
-      if (currentY >= box.top && currentY <= box.bottom) return 0;
-      return currentY < box.top ? box.top - currentY : currentY - box.bottom;
-    }
+    final lines = VisualCaretTraversal.groupIntoLines(allBoxes, allOffsets);
 
-    var lineTop = allBoxes.first.top;
-    var bestDistance = distanceToBand(allBoxes.first);
-    for (final box in allBoxes) {
-      final distance = distanceToBand(box);
+    // The y the RENDERER draws a caret at, per line — asked of the paragraph
+    // rather than derived from the glyph boxes.
+    //
+    // ⚠️ This replaces a "nearest vertical band" match that was WRONG for every
+    // line but the first (measured 2026-07-29 on a real macOS window). Glyph
+    // bands abut to the pixel — line 1 spans y=21.0..45.0 and the caret on
+    // line 2 sits at y=44.6 — so the caret on line N always fell inside line
+    // N-1's band and was attributed to it. The visible result was a caret that
+    // teleported to the paragraph's first line: in plain English, pressing
+    // right at the end of visual line 1 jumped from offset 45 to offset 1.
+    // That, not anything about bidi, is what "one left arrow lands in the
+    // previous paragraph" was.
+    //
+    // Using `offsets.last` is what makes this unambiguous: a line's LAST offset
+    // is always native to that line, while its first is the soft-wrap boundary
+    // shared with the line above and resolves either way depending on affinity.
+    double caretYOf(VisualLine line) => paragraph
+        .getOffsetForCaret(
+          TextPosition(
+            offset: line.offsets.last,
+            affinity: TextAffinity.upstream,
+          ),
+          Rect.zero,
+        )
+        .dy;
+    final caretYs = lines.map(caretYOf).toList();
+
+    var lineIndex = 0;
+    var bestDistance = (caretYs.first - currentY).abs();
+    for (var i = 1; i < lines.length; i++) {
+      final distance = (caretYs[i] - currentY).abs();
       if (distance < bestDistance) {
         bestDistance = distance;
-        lineTop = box.top;
+        lineIndex = i;
       }
     }
 
-    final boxes = <TextBox>[];
-    final boxOffsets = <int>[];
-    for (var i = 0; i < allBoxes.length; i++) {
-      if ((allBoxes[i].top - lineTop).abs() > 0.1) continue;
-      boxes.add(allBoxes[i]);
-      boxOffsets.add(allOffsets[i]);
-    }
-
-    if (boxes.isEmpty) {
-      return null;
-    }
-
-    var stops = VisualCaretTraversal.stopsFor(boxes);
-
     final paragraphIsRtl = textDirection() == TextDirection.rtl;
-    if (byWord) {
-      // Keep only stops that are also word edges, so a word jump lands on a
-      // place the character arrows can also reach. Deriving the word edges from
-      // the same visual stops is the whole point: logical word arithmetic can
-      // land somewhere else on the line entirely in bidi text.
-      stops = stops.where((stop) {
-        final sides = VisualCaretTraversal.sidesAt(
-          boxes,
+
+    /// The caret stops of line [index] that the renderer would actually draw ON
+    /// that line.
+    ///
+    /// The filter matters at a soft wrap: the boundary offset has two homes —
+    /// the end of the line above and the start of this one — and the renderer
+    /// resolves it upstream, i.e. to the line above. Offering its start-of-line
+    /// home as a stop here produced a caret drawn with THIS line's x at the
+    /// PREVIOUS line's y: pressing left from the start of a wrapped line put
+    /// the caret at the paragraph's top-left corner. Dropping it means that
+    /// place is reached by crossing the line, which is what the reader means by
+    /// it anyway.
+    List<double> stopsOnLine(int index) {
+      final line = lines[index];
+      final lineCaretY = caretYs[index];
+      return VisualCaretTraversal.stopsFor(line.boxes).where((stop) {
+        final resting = VisualCaretTraversal.restingOffset(
+          line.boxes,
           stop,
-          offsets: boxOffsets,
+          paragraphDirection: textDirection(),
+          offsets: line.offsets,
+        );
+        if (resting == null) {
+          return false;
+        }
+        final drawnY = paragraph
+            .getOffsetForCaret(
+              TextPosition(offset: resting, affinity: TextAffinity.upstream),
+              Rect.zero,
+            )
+            .dy;
+        if ((drawnY - lineCaretY).abs() > VisualCaretTraversal.lineEpsilon) {
+          return false;
+        }
+        if (!byWord) {
+          return true;
+        }
+        // Keep only stops that are also word edges, so a word jump lands on a
+        // place the character arrows can also reach. Deriving the word edges
+        // from the same visual stops is the whole point: logical word
+        // arithmetic can land somewhere else on the line entirely in bidi text.
+        final sides = VisualCaretTraversal.sidesAt(
+          line.boxes,
+          stop,
+          offsets: line.offsets,
         );
         final rtlSide = sides.rtl;
         final ltrSide = sides.ltr;
@@ -582,30 +620,62 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       }).toList();
     }
 
-    final double? nextX;
+    var landingLine = lineIndex;
+    double? nextX;
+    final stops = stopsOnLine(lineIndex);
     if (toLineEdge) {
-      // Cmd+arrow: jump straight to this visual line's far edge.
-      final edge = towardsLeft ? stops.first : stops.last;
-      nextX =
-          (edge - currentX).abs() <= VisualCaretTraversal.epsilon ? null : edge;
+      if (stops.isNotEmpty) {
+        final edge = towardsLeft ? stops.first : stops.last;
+        nextX = (edge - currentX).abs() <= VisualCaretTraversal.epsilon
+            ? null
+            : edge;
+      }
     } else {
       nextX = VisualCaretTraversal.step(
         stops,
         currentX,
         towardsLeft: towardsLeft,
       );
+
+      if (nextX == null) {
+        // The line's visual edge. Cross to the neighbouring line HERE rather
+        // than returning null and letting offset arithmetic guess: the caret's
+        // place on the line is measured, and the arithmetic has no way to know
+        // it, so the two disagree at exactly the boundary the reader is
+        // crossing.
+        //
+        // Which line is next depends on the paragraph, not on the key: reading
+        // an RTL paragraph moves LEFTWARD, so running off the left edge of a
+        // line continues on the line BELOW, while in an LTR paragraph it
+        // continues on the line ABOVE. Either way the caret arrives at the far
+        // side — leftward movement lands on the target line's rightmost stop —
+        // which is what wrapping around a line looks like.
+        final step = towardsLeft
+            ? (paragraphIsRtl ? 1 : -1)
+            : (paragraphIsRtl ? -1 : 1);
+        for (var i = lineIndex + step; i >= 0 && i < lines.length; i += step) {
+          // A word jump can find no stop at all on a line it passes over, so
+          // keep going rather than stalling there.
+          final candidates = stopsOnLine(i);
+          if (candidates.isEmpty) continue;
+          nextX = towardsLeft ? candidates.last : candidates.first;
+          landingLine = i;
+          break;
+        }
+      }
     }
-    // Null means the line's visual edge: the caller crosses lines or blocks
-    // using the behaviour it already has.
+
+    // Still null means the block's own visual edge: the caller crosses to the
+    // neighbouring block using the behaviour it already has.
     if (nextX == null) {
       return null;
     }
 
     final offset = VisualCaretTraversal.restingOffset(
-      boxes,
+      lines[landingLine].boxes,
       nextX,
       paragraphDirection: textDirection(),
-      offsets: boxOffsets,
+      offsets: lines[landingLine].offsets,
     );
     if (offset == null) {
       return null;
@@ -614,7 +684,7 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     return VisualCaretPosition(
       path: widget.node.path,
       offset: offset,
-      visualLocalOffset: Offset(nextX, currentY),
+      visualLocalOffset: Offset(nextX, caretYs[landingLine]),
     );
   }
 

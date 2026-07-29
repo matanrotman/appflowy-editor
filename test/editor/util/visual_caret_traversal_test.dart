@@ -242,4 +242,65 @@ void main() {
       expect(VisualCaretTraversal.sidesAt(rtlLine, 0).rtl, 3);
     });
   });
+
+  group('groupIntoLines — a wrapped paragraph', () {
+    // Measured on the real macOS target, 2026-07-29, for a three-line English
+    // paragraph at 360pt wide. Note the bands ABUT and even overlap:
+    //
+    //   line 0  y = -0.4 .. 21.0
+    //   line 1  y = 21.0 .. 45.0
+    //   line 2  y = 44.6 .. 66.0
+    //
+    // Those numbers are the whole reason this grouping exists. The traversal
+    // used to pick the caret's line by asking which band contained the caret's
+    // dy, and a caret on line 2 sits at dy=44.6 — inside line 1's band — so
+    // every caret past the first line was attributed to the line above it. The
+    // visible symptom was a caret that teleported to the paragraph's first
+    // line: pressing right at the end of visual line 1 jumped from offset 45
+    // to offset 1.
+    TextBox lineBox(double left, double right, double top, double bottom) =>
+        TextBox.fromLTRBD(left, top, right, bottom, TextDirection.ltr);
+
+    test('splits abutting bands into separate lines, ordered top-down', () {
+      final boxes = <TextBox>[
+        lineBox(0, 10, -0.4, 21.0), // line 0
+        lineBox(10, 20, -0.4, 21.0),
+        lineBox(0, 10, 21.0, 45.0), // line 1
+        lineBox(10, 20, 21.0, 45.0),
+        lineBox(0, 10, 44.6, 66.0), // line 2
+      ];
+      final lines = VisualCaretTraversal.groupIntoLines(boxes, [0, 1, 2, 3, 4]);
+
+      expect(lines.length, 3);
+      expect(lines.map((l) => l.top), [-0.4, 21.0, 44.6]);
+      expect(lines.map((l) => l.offsets), [
+        [0, 1],
+        [2, 3],
+        [4],
+      ]);
+    });
+
+    test('keeps a line whose offsets are not contiguous', () {
+      // Characters consumed by a soft wrap return no box at all, so a line's
+      // offsets have gaps. Assuming `first + i` mis-numbered every box after
+      // the first gap when this was originally built.
+      final boxes = <TextBox>[
+        lineBox(0, 10, 0, 20),
+        lineBox(10, 20, 0, 20),
+        lineBox(0, 10, 20, 40),
+      ];
+      final lines = VisualCaretTraversal.groupIntoLines(boxes, [3, 4, 7]);
+
+      expect(lines.first.offsets, [3, 4]);
+      expect(lines.last.offsets, [7]);
+    });
+
+    test('a single-line paragraph is one line', () {
+      final boxes = <TextBox>[
+        lineBox(0, 10, 0, 20),
+        lineBox(10, 20, 0, 20),
+      ];
+      expect(VisualCaretTraversal.groupIntoLines(boxes, [0, 1]).length, 1);
+    });
+  });
 }
