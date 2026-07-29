@@ -76,6 +76,21 @@ mixin SelectableMixin<T extends StatefulWidget> on State<T> {
     return null;
   }
 
+  /// The caret position at the far visual edge of this block's first or last
+  /// visual line, or null when the block cannot answer.
+  ///
+  /// Used when arrow movement leaves one block and enters another, so the caret
+  /// can arrive at the side it would have continued marching from rather than
+  /// at whichever offset happens to be the block's logical start or end. Only
+  /// reached when [VisualCaretTraversal.crossBlocksVisually] is on — see the
+  /// flag for the open question that gates it.
+  Position? getVisualLineEdgeCaretPosition({
+    required bool rightmost,
+    required bool firstLine,
+  }) {
+    return null;
+  }
+
   /// Return global offset from local offset.
   Offset localToGlobal(
     Offset offset, {

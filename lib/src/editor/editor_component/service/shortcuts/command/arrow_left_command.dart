@@ -65,11 +65,18 @@ bool moveCaretVisually(
   final node = editorState.getNodeAtPath(position.path);
   final selectable = node?.selectable;
   final next = selectable?.getNextVisualCaretPosition(
-    position,
-    towardsLeft: towardsLeft,
-    byWord: byWord,
-    toLineEdge: toLineEdge,
-  );
+        position,
+        towardsLeft: towardsLeft,
+        byWord: byWord,
+        toLineEdge: toLineEdge,
+      ) ??
+      (toLineEdge
+          ? null
+          : _crossBlockVisually(
+              editorState,
+              node,
+              towardsLeft: towardsLeft,
+            ));
   if (next == null) {
     return false;
   }
@@ -78,6 +85,41 @@ bool moveCaretVisually(
     reason: SelectionUpdateReason.uiEvent,
   );
   return true;
+}
+
+/// Continues the visual march into the neighbouring BLOCK, landing at the side
+/// the caret would have kept moving from.
+///
+/// Returns null unless [VisualCaretTraversal.crossBlocksVisually] is on, so the
+/// default path is untouched — see that flag for the open question this is
+/// gated behind.
+///
+/// Which block is next follows the paragraph, not the key: reading an RTL
+/// paragraph moves leftward, so leaving one to the left continues in the block
+/// BELOW, while leaving an LTR paragraph to the left continues in the block
+/// ABOVE. The landing edge is the mirror of the travel — leftward movement
+/// arrives at the neighbour's rightmost stop — exactly as crossing a visual
+/// line within a block already does.
+Position? _crossBlockVisually(
+  EditorState editorState,
+  Node? node, {
+  required bool towardsLeft,
+}) {
+  if (!VisualCaretTraversal.crossBlocksVisually || node == null) {
+    return null;
+  }
+  final isRtl = node.selectable?.textDirection() == TextDirection.rtl;
+  final forwards = towardsLeft ? isRtl : !isRtl;
+  var neighbour = forwards
+      ? node.next
+      : node.previousNodeWhere((element) => element.selectable != null);
+  while (neighbour != null && neighbour.selectable == null) {
+    neighbour = forwards ? neighbour.next : neighbour.previous;
+  }
+  return neighbour?.selectable?.getVisualLineEdgeCaretPosition(
+    rightmost: towardsLeft,
+    firstLine: forwards,
+  );
 }
 
 /// ⚠️ NOT WIRED — D2 was tried and REVERSED (user, 2026-07-28: "Looks odd, I

@@ -59,6 +59,18 @@ mixin DefaultSelectableMixin {
         toLineEdge: toLineEdge,
       );
 
+  /// ⚠️ See the warning on [getNextVisualCaretPosition] above — a new
+  /// [SelectableMixin] member must be forwarded HERE or every block component
+  /// silently gets the base implementation.
+  Position? getVisualLineEdgeCaretPosition({
+    required bool rightmost,
+    required bool firstLine,
+  }) =>
+      forward.getVisualLineEdgeCaretPosition(
+        rightmost: rightmost,
+        firstLine: firstLine,
+      );
+
   Rect? getCursorRectInPosition(
     Position position, {
     bool shiftWithBaseOffset = false,

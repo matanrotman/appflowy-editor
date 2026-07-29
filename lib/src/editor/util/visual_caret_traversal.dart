@@ -35,6 +35,25 @@ class VisualCaretTraversal {
   /// generous without ever merging two of them.
   static const double lineEpsilon = 0.1;
 
+  /// Whether arrow movement crosses a BLOCK boundary visually as well.
+  ///
+  /// ⚠️ An experiment behind a switch, awaiting the user's verdict on a
+  /// question with no convention to copy. At the boundary between an LTR and an
+  /// RTL paragraph, "left" means backward in one and forward in the other, so
+  /// each paragraph hands the caret straight back and arrow-left ping-pongs
+  /// between them (measured 2026-07-29; pre-existing, previously hidden by a
+  /// line-attribution bug).
+  ///
+  ///  * **off** — the paragraph decides, which is right in a document that does
+  ///    not mix directions and bounces in one that does.
+  ///  * **on** — leftward movement always arrives at the neighbouring block's
+  ///    RIGHT edge and keeps marching left. Nothing bounces, but two
+  ///    opposite-direction paragraphs can be circled rather than passed
+  ///    through.
+  ///
+  /// Set by the host app; the editor never persists it.
+  static bool crossBlocksVisually = false;
+
   /// The glyph boxes of [boxes] grouped into visual lines, top-most first.
   ///
   /// `boxes[i]` is the box of the character at `offsets[i]`. Characters
