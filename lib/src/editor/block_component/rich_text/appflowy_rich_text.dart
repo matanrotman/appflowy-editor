@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math';
 import 'dart:ui';
 
@@ -6,20 +5,6 @@ import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-
-// Temporary session-23 probe — remove once the line-end overshoot bug
-// (plain arrow-left/right landing 1-2 characters past a wrapped line's true
-// end, correct on a block's own last line) is diagnosed. Logs every plain
-// (non-byWord) traversal's line-stop set and chosen landing to a fixed path
-// so a live repro can be read back without driving the user's screen.
-void zzProbeLog(String line) {
-  try {
-    File('${Platform.environment['HOME']}/Desktop/ludwig_caret_probe.log')
-        .writeAsStringSync('${DateTime.now()} $line\n', mode: FileMode.append);
-  } catch (_) {
-    // Best-effort only; never let the probe break real typing.
-  }
-}
 
 typedef TextSpanDecoratorForAttribute = InlineSpan Function(
   BuildContext context,
@@ -413,20 +398,54 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
 
   @override
   Position getPositionInOffset(Offset start) {
-    final offset = _renderParagraph?.globalToLocal(start) ?? Offset.zero;
-    final textPosition = _renderParagraph?.getPositionForOffset(offset);
-    if (textPosition == null) {
+    final paragraph = _renderParagraph;
+    final offset = paragraph?.globalToLocal(start) ?? Offset.zero;
+    var textPosition = paragraph?.getPositionForOffset(offset);
+    if (textPosition == null || paragraph == null) {
       return Position(path: widget.node.path, offset: -1);
     }
-    // Temporary session-23 probe — remove once the click-overshoot bug
-    // (clicking near a wrapped line's end lands past the last visible
-    // character, mirroring the arrow-key overshoot already fixed) is
-    // diagnosed.
-    zzProbeLog(
-      'CLICK localOffset=$offset resolvedOffset=${textPosition.offset} '
-      'affinity=${textPosition.affinity} '
-      'char=${textPosition.offset >= 0 && textPosition.offset < (widget.node.delta?.toPlainText().length ?? 0) ? widget.node.delta!.toPlainText()[textPosition.offset] : null}',
-    );
+
+    // A click past the last VISIBLE character of a wrapped line can still
+    // resolve — via Flutter's OWN hit-testing, not our custom traversal —
+    // to the wrap's boundary offset with upstream affinity, its way of
+    // saying "this belongs to the line above." But nothing is drawn there:
+    // it's the same invisible trailing wrap-space whose lonely outer edge
+    // VisualCaretTraversal.stopsForLine already excludes from arrow-key
+    // movement (fixed 2026-08-06). Redirect to the space's own offset,
+    // which draws snug against the last real character instead — but only
+    // once confirmed genuinely wrapped: the boundary offset's upstream y
+    // must match the trailing space's own y, or this would misfire on an
+    // ordinary same-line space that merely defaulted to upstream affinity.
+    final text = widget.node.delta?.toPlainText();
+    if (textPosition.affinity == TextAffinity.upstream &&
+        textPosition.offset > 0 &&
+        text != null &&
+        textPosition.offset < text.length &&
+        text[textPosition.offset - 1].trim().isEmpty) {
+      final boundaryUpstreamY = paragraph
+          .getOffsetForCaret(
+            TextPosition(
+              offset: textPosition.offset,
+              affinity: TextAffinity.upstream,
+            ),
+            Rect.zero,
+          )
+          .dy;
+      final spaceOwnY = paragraph
+          .getOffsetForCaret(
+            TextPosition(
+              offset: textPosition.offset - 1,
+              affinity: TextAffinity.downstream,
+            ),
+            Rect.zero,
+          )
+          .dy;
+      if ((boundaryUpstreamY - spaceOwnY).abs() <=
+          VisualCaretTraversal.lineEpsilon) {
+        textPosition = TextPosition(offset: textPosition.offset - 1);
+      }
+    }
+
     // Keep the affinity Flutter resolved for the tap, not just the integer
     // offset. At a soft line-wrap the offset alone is ambiguous — the same
     // integer is both "end of the previous visual line" and "start of this
@@ -782,14 +801,6 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     var landingLine = lineIndex;
     double? nextX;
     final stops = stopsOnLine(lineIndex);
-    if (!byWord) {
-      zzProbeLog(
-        'ENTRY pos=${position.offset} towardsLeft=$towardsLeft '
-        'toLineEdge=$toLineEdge currentX=$currentX currentY=$currentY '
-        'lineIndex=$lineIndex lineOffsets=${lines[lineIndex].offsets.isEmpty ? null : '${lines[lineIndex].offsets.first}..${lines[lineIndex].offsets.last}'} '
-        'stops=$stops',
-      );
-    }
     if (toLineEdge) {
       if (stops.isNotEmpty) {
         final edge = towardsLeft ? stops.first : stops.last;
@@ -861,22 +872,10 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     // Still null means the block's own visual edge: the caller crosses to the
     // neighbouring block using the behaviour it already has.
     if (nextX == null) {
-      if (!byWord) {
-        zzProbeLog('EXIT nextX=null (block edge) landingLine=$landingLine');
-      }
       return null;
     }
 
-    if (!byWord) {
-      zzProbeLog(
-        'EXIT nextX=$nextX landingLine=$landingLine '
-        'landingLineOffsets=${lines[landingLine].offsets.isEmpty ? null : '${lines[landingLine].offsets.first}..${lines[landingLine].offsets.last}'}',
-      );
-    }
     final offset = offsetForStop(lines[landingLine], nextX);
-    if (!byWord) {
-      zzProbeLog('  -> resolvedOffset=$offset');
-    }
     if (offset == null) {
       return null;
     }
