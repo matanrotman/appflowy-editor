@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math';
 import 'dart:ui';
 
@@ -5,6 +6,17 @@ import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+
+// Temporary session-23 probe (round 2) — remove once the click-overshoot
+// fix's redirect condition is confirmed to actually fire on a real click.
+void zzProbeLog(String line) {
+  try {
+    File('${Platform.environment['HOME']}/Desktop/ludwig_caret_probe.log')
+        .writeAsStringSync('${DateTime.now()} $line\n', mode: FileMode.append);
+  } catch (_) {
+    // Best-effort only; never let the probe break real typing.
+  }
+}
 
 typedef TextSpanDecoratorForAttribute = InlineSpan Function(
   BuildContext context,
@@ -417,11 +429,17 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     // must match the trailing space's own y, or this would misfire on an
     // ordinary same-line space that merely defaulted to upstream affinity.
     final text = widget.node.delta?.toPlainText();
-    if (textPosition.affinity == TextAffinity.upstream &&
+    final preconditionsMet = textPosition.affinity == TextAffinity.upstream &&
         textPosition.offset > 0 &&
         text != null &&
         textPosition.offset < text.length &&
-        text[textPosition.offset - 1].trim().isEmpty) {
+        text[textPosition.offset - 1].trim().isEmpty;
+    zzProbeLog(
+      'CLICK2 localOffset=$offset resolvedOffset=${textPosition.offset} '
+      'affinity=${textPosition.affinity} preconditionsMet=$preconditionsMet '
+      'charBefore=${textPosition.offset > 0 && text != null && textPosition.offset - 1 < text.length ? text[textPosition.offset - 1] : null}',
+    );
+    if (preconditionsMet) {
       final boundaryUpstreamY = paragraph
           .getOffsetForCaret(
             TextPosition(
@@ -440,9 +458,16 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
             Rect.zero,
           )
           .dy;
+      zzProbeLog(
+        '  boundaryUpstreamY=$boundaryUpstreamY spaceOwnY=$spaceOwnY '
+        'diff=${(boundaryUpstreamY - spaceOwnY).abs()}',
+      );
       if ((boundaryUpstreamY - spaceOwnY).abs() <=
           VisualCaretTraversal.lineEpsilon) {
         textPosition = TextPosition(offset: textPosition.offset - 1);
+        zzProbeLog('  -> REDIRECTED to offset=${textPosition.offset}');
+      } else {
+        zzProbeLog('  -> NOT redirected, y mismatch');
       }
     }
 
