@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math';
 import 'dart:ui';
 
@@ -6,20 +5,6 @@ import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-
-// Temporary session-23 probe (round 3) — READ-ONLY, no behavior change.
-// Building a dataset of real clicks (in-line, past line end, past the
-// right margin) before attempting another fix, after round 1's fix
-// regressed clicking broadly. Remove once the general click-positioning
-// bug is understood.
-void zzProbeLog(String line) {
-  try {
-    File('${Platform.environment['HOME']}/Desktop/ludwig_caret_probe.log')
-        .writeAsStringSync('${DateTime.now()} $line\n', mode: FileMode.append);
-  } catch (_) {
-    // Best-effort only; never let the probe break real typing.
-  }
-}
 
 typedef TextSpanDecoratorForAttribute = InlineSpan Function(
   BuildContext context,
@@ -413,34 +398,11 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
 
   @override
   Position getPositionInOffset(Offset start) {
-    final paragraph = _renderParagraph;
-    final offset = paragraph?.globalToLocal(start) ?? Offset.zero;
-    final textPosition = paragraph?.getPositionForOffset(offset);
+    final offset = _renderParagraph?.globalToLocal(start) ?? Offset.zero;
+    final textPosition = _renderParagraph?.getPositionForOffset(offset);
     if (textPosition == null) {
       return Position(path: widget.node.path, offset: -1);
     }
-    // Temporary session-23 round-3 probe — READ-ONLY, does not change what
-    // is returned. Building a dataset before touching this function again.
-    final text = widget.node.delta?.toPlainText();
-    TextPosition? clampedPosition;
-    if (paragraph != null &&
-        (offset.dx < 0 || offset.dx > paragraph.size.width)) {
-      final clampedOffset = Offset(
-        offset.dx.clamp(0.0, paragraph.size.width),
-        offset.dy,
-      );
-      clampedPosition = paragraph.getPositionForOffset(clampedOffset);
-    }
-    zzProbeLog(
-      'CLICK3 localOffset=$offset paragraphSize=${paragraph?.size} '
-      'resolvedOffset=${textPosition.offset} affinity=${textPosition.affinity} '
-      'textLength=${text?.length} '
-      'char=${text != null && textPosition.offset >= 0 && textPosition.offset < text.length ? text[textPosition.offset] : null} '
-      'nodePath=${widget.node.path} paragraphDirection=${textDirection()} '
-      'clampedResolvedOffset=${clampedPosition?.offset} '
-      'clampedAffinity=${clampedPosition?.affinity} '
-      'clampedChar=${text != null && clampedPosition != null && clampedPosition.offset >= 0 && clampedPosition.offset < text.length ? text[clampedPosition.offset] : null}',
-    );
     // Keep the affinity Flutter resolved for the tap, not just the integer
     // offset. At a soft line-wrap the offset alone is ambiguous — the same
     // integer is both "end of the previous visual line" and "start of this
