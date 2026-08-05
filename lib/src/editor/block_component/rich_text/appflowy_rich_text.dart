@@ -422,12 +422,24 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     // Temporary session-23 round-3 probe — READ-ONLY, does not change what
     // is returned. Building a dataset before touching this function again.
     final text = widget.node.delta?.toPlainText();
+    TextPosition? clampedPosition;
+    if (paragraph != null &&
+        (offset.dx < 0 || offset.dx > paragraph.size.width)) {
+      final clampedOffset = Offset(
+        offset.dx.clamp(0.0, paragraph.size.width),
+        offset.dy,
+      );
+      clampedPosition = paragraph.getPositionForOffset(clampedOffset);
+    }
     zzProbeLog(
       'CLICK3 localOffset=$offset paragraphSize=${paragraph?.size} '
       'resolvedOffset=${textPosition.offset} affinity=${textPosition.affinity} '
       'textLength=${text?.length} '
       'char=${text != null && textPosition.offset >= 0 && textPosition.offset < text.length ? text[textPosition.offset] : null} '
-      'nodePath=${widget.node.path} paragraphDirection=${textDirection()}',
+      'nodePath=${widget.node.path} paragraphDirection=${textDirection()} '
+      'clampedResolvedOffset=${clampedPosition?.offset} '
+      'clampedAffinity=${clampedPosition?.affinity} '
+      'clampedChar=${text != null && clampedPosition != null && clampedPosition.offset >= 0 && clampedPosition.offset < text.length ? text[clampedPosition.offset] : null}',
     );
     // Keep the affinity Flutter resolved for the tap, not just the integer
     // offset. At a soft line-wrap the offset alone is ambiguous — the same
