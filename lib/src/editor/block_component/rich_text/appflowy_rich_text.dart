@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math';
 import 'dart:ui';
 
@@ -5,6 +6,15 @@ import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+
+// Temporary session-22 probe #2 — remove once diagnosed. See
+// getCursorRectInPosition below.
+void zzProbeLog(String line) {
+  try {
+    File('${Platform.environment['HOME']}/Desktop/ludwig_caret_probe.log')
+        .writeAsStringSync('${DateTime.now()} $line\n', mode: FileMode.append);
+  } catch (_) {}
+}
 
 typedef TextSpanDecoratorForAttribute = InlineSpan Function(
   BuildContext context,
@@ -202,6 +212,13 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
         (delta != null && position.offset > delta.length)) {
       return null;
     }
+
+    zzProbeLog(
+      'getCursorRectInPosition offset=${position.offset} '
+      'type=${position.runtimeType} isVisual=${position is VisualCaretPosition} '
+      'visualDx=${position is VisualCaretPosition ? position.visualLocalOffset.dx : null} '
+      'visualDy=${position is VisualCaretPosition ? position.visualLocalOffset.dy : null}',
+    );
 
     // Upstream (not Flutter's default of downstream): at a boundary between
     // an RTL run and an embedded LTR run, a single logical offset can map
@@ -811,6 +828,12 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       return null;
     }
 
+    if (byWord) {
+      zzProbeLog(
+        'getNextVisualCaretPosition EXIT offset=$offset '
+        'visualLocalOffset=${Offset(nextX, caretY(landingLine))}',
+      );
+    }
     return VisualCaretPosition(
       path: widget.node.path,
       offset: offset,
