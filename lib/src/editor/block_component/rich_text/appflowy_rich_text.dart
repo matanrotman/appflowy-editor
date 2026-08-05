@@ -418,6 +418,15 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     if (textPosition == null) {
       return Position(path: widget.node.path, offset: -1);
     }
+    // Temporary session-23 probe — remove once the click-overshoot bug
+    // (clicking near a wrapped line's end lands past the last visible
+    // character, mirroring the arrow-key overshoot already fixed) is
+    // diagnosed.
+    zzProbeLog(
+      'CLICK localOffset=$offset resolvedOffset=${textPosition.offset} '
+      'affinity=${textPosition.affinity} '
+      'char=${textPosition.offset >= 0 && textPosition.offset < (widget.node.delta?.toPlainText().length ?? 0) ? widget.node.delta!.toPlainText()[textPosition.offset] : null}',
+    );
     // Keep the affinity Flutter resolved for the tap, not just the integer
     // offset. At a soft line-wrap the offset alone is ambiguous — the same
     // integer is both "end of the previous visual line" and "start of this
