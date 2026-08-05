@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math';
 import 'dart:ui';
 
@@ -6,17 +5,6 @@ import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-
-// Temporary session-23 probe (round 2) — remove once the click-overshoot
-// fix's redirect condition is confirmed to actually fire on a real click.
-void zzProbeLog(String line) {
-  try {
-    File('${Platform.environment['HOME']}/Desktop/ludwig_caret_probe.log')
-        .writeAsStringSync('${DateTime.now()} $line\n', mode: FileMode.append);
-  } catch (_) {
-    // Best-effort only; never let the probe break real typing.
-  }
-}
 
 typedef TextSpanDecoratorForAttribute = InlineSpan Function(
   BuildContext context,
@@ -410,67 +398,11 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
 
   @override
   Position getPositionInOffset(Offset start) {
-    final paragraph = _renderParagraph;
-    final offset = paragraph?.globalToLocal(start) ?? Offset.zero;
-    var textPosition = paragraph?.getPositionForOffset(offset);
-    if (textPosition == null || paragraph == null) {
+    final offset = _renderParagraph?.globalToLocal(start) ?? Offset.zero;
+    final textPosition = _renderParagraph?.getPositionForOffset(offset);
+    if (textPosition == null) {
       return Position(path: widget.node.path, offset: -1);
     }
-
-    // A click past the last VISIBLE character of a wrapped line can still
-    // resolve — via Flutter's OWN hit-testing, not our custom traversal —
-    // to the wrap's boundary offset with upstream affinity, its way of
-    // saying "this belongs to the line above." But nothing is drawn there:
-    // it's the same invisible trailing wrap-space whose lonely outer edge
-    // VisualCaretTraversal.stopsForLine already excludes from arrow-key
-    // movement (fixed 2026-08-06). Redirect to the space's own offset,
-    // which draws snug against the last real character instead — but only
-    // once confirmed genuinely wrapped: the boundary offset's upstream y
-    // must match the trailing space's own y, or this would misfire on an
-    // ordinary same-line space that merely defaulted to upstream affinity.
-    final text = widget.node.delta?.toPlainText();
-    final preconditionsMet = textPosition.affinity == TextAffinity.upstream &&
-        textPosition.offset > 0 &&
-        text != null &&
-        textPosition.offset < text.length &&
-        text[textPosition.offset - 1].trim().isEmpty;
-    zzProbeLog(
-      'CLICK2 localOffset=$offset resolvedOffset=${textPosition.offset} '
-      'affinity=${textPosition.affinity} preconditionsMet=$preconditionsMet '
-      'charBefore=${textPosition.offset > 0 && text != null && textPosition.offset - 1 < text.length ? text[textPosition.offset - 1] : null}',
-    );
-    if (preconditionsMet) {
-      final boundaryUpstreamY = paragraph
-          .getOffsetForCaret(
-            TextPosition(
-              offset: textPosition.offset,
-              affinity: TextAffinity.upstream,
-            ),
-            Rect.zero,
-          )
-          .dy;
-      final spaceOwnY = paragraph
-          .getOffsetForCaret(
-            TextPosition(
-              offset: textPosition.offset - 1,
-              affinity: TextAffinity.downstream,
-            ),
-            Rect.zero,
-          )
-          .dy;
-      zzProbeLog(
-        '  boundaryUpstreamY=$boundaryUpstreamY spaceOwnY=$spaceOwnY '
-        'diff=${(boundaryUpstreamY - spaceOwnY).abs()}',
-      );
-      if ((boundaryUpstreamY - spaceOwnY).abs() <=
-          VisualCaretTraversal.lineEpsilon) {
-        textPosition = TextPosition(offset: textPosition.offset - 1);
-        zzProbeLog('  -> REDIRECTED to offset=${textPosition.offset}');
-      } else {
-        zzProbeLog('  -> NOT redirected, y mismatch');
-      }
-    }
-
     // Keep the affinity Flutter resolved for the tap, not just the integer
     // offset. At a soft line-wrap the offset alone is ambiguous — the same
     // integer is both "end of the previous visual line" and "start of this
