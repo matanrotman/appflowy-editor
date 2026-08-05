@@ -225,6 +225,21 @@ CommandShortcutEventHandler _moveCursorLeftWordSelectCommandHandler =
   if (selection == null) {
     return KeyEventResult.ignored;
   }
+  // Word jumps follow the same visual march as the character arrows and
+  // moveCursorToLeftWordCommand above; see moveCaretVisually. This does NOT
+  // reopen D2 (visual selection, reversed 2026-07-28): D2 was about a
+  // character-by-character shift+arrow producing a visually-contiguous but
+  // logically-patchy highlight in mixed text, which looked wrong and was
+  // rejected on sight. A word jump only changes how ONE destination offset
+  // is computed; the resulting selection is still a single ordinary
+  // logical range, same shape either way — this only fixes which word it
+  // lands on (2026-08-05: from the end of "polites" this selected
+  // "spoudaios" instead, via a directional edge case in Flutter's own ICU
+  // word-boundary detection that the visual byWord traversal already
+  // resolves correctly for the plain, unshifted word-jump command).
+  if (extendSelectionVisually(editorState, towardsLeft: true, byWord: true)) {
+    return KeyEventResult.handled;
+  }
   var forward = true;
   if (isRTL(editorState)) {
     forward = false;

@@ -610,6 +610,86 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
 
     final paragraphIsRtl = textDirection() == TextDirection.rtl;
 
+    /// The offset a stop at [stop] on [line] resolves to, for LANDING
+    /// purposes — as opposed to [VisualCaretTraversal.restingOffset], which
+    /// always defers to the paragraph's own direction.
+    ///
+    /// At a directional boundary [VisualCaretTraversal.sidesAt] returns TWO
+    /// different offsets for the same x — one per side — and for a character
+    /// step the paragraph's side is the right tiebreak. For a WORD step it is
+    /// not: [stopsOnLine] below keeps a stop specifically because one
+    /// particular side satisfies the word predicate, and the landing offset
+    /// must be THAT side, not whichever the paragraph happens to be.
+    ///
+    /// Measured consequence of getting this wrong (2026-08-05): from the end
+    /// of "polites" in "…(spoudaios polites)?", stepping left with
+    /// Option+Left correctly reached the start of "polites" (byWord kept the
+    /// stop via its LTR side), but the NEXT Option+Left — now leftward past
+    /// "polites" own start, where the stop's LTR side is "spoudaios"'s start
+    /// but its RTL side is "polites"'s own end again — landed back on
+    /// "polites"'s end because this always used the RTL (paragraph) side.
+    /// The caret ping-ponged on one word instead of reaching "spoudaios".
+    int? offsetForStop(VisualLine line, double stop) {
+      if (!byWord) {
+        return VisualCaretTraversal.restingOffset(
+          line.boxes,
+          stop,
+          paragraphDirection: textDirection(),
+          offsets: line.offsets,
+        );
+      }
+      final sides = VisualCaretTraversal.sidesAt(
+        line.boxes,
+        stop,
+        offsets: line.offsets,
+      );
+      final rtlSide = sides.rtl;
+      final ltrSide = sides.ltr;
+      // Unlike the non-byWord branch above, finding neither side valid here
+      // means this stop is NOT a word edge at all, and must return null so
+      // the caller (stopsOnLine's filter) rejects it — that rejection is
+      // what makes a word jump skip character-level stops in the first
+      // place. Silently falling back to the paragraph's side here is
+      // exactly the bug this function exists to fix: it would readmit
+      // every stop stopsOnLine meant to filter out.
+      if (paragraphIsRtl) {
+        // Word-start first, exactly as before — this priority is what keeps
+        // a word jump landing on the semantically right side of an ambiguous
+        // stop (a mirrored punctuation glyph like ")" can satisfy the
+        // broader isSegmentStart check below on BOTH sides at once, which
+        // regressed the polites/spoudaios fix above when tried first here).
+        if (rtlSide != null && VisualCaretTraversal.isWordStart(text, rtlSide)) {
+          return rtlSide;
+        }
+        if (ltrSide != null && VisualCaretTraversal.isWordStart(text, ltrSide)) {
+          return ltrSide;
+        }
+        // Falls back to a punctuation run's own start only when neither side
+        // is a word start at all, so Option+arrow stops before "," rather
+        // than skipping straight to the next word (reported 2026-08-05).
+        // Plain whitespace still gets no stop — the "skip the lone space"
+        // rule is unchanged.
+        if (rtlSide != null &&
+            VisualCaretTraversal.isSegmentStart(text, rtlSide)) {
+          return rtlSide;
+        }
+        if (ltrSide != null &&
+            VisualCaretTraversal.isSegmentStart(text, ltrSide)) {
+          return ltrSide;
+        }
+      } else {
+        if (rtlSide != null &&
+            VisualCaretTraversal.isWordBoundary(text, rtlSide)) {
+          return rtlSide;
+        }
+        if (ltrSide != null &&
+            VisualCaretTraversal.isWordBoundary(text, ltrSide)) {
+          return ltrSide;
+        }
+      }
+      return null;
+    }
+
     /// The caret stops of line [index] that the renderer would actually draw ON
     /// that line.
     ///
@@ -625,12 +705,7 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       final line = lines[index];
       final lineCaretY = caretY(index);
       return VisualCaretTraversal.stopsFor(line.boxes).where((stop) {
-        final resting = VisualCaretTraversal.restingOffset(
-          line.boxes,
-          stop,
-          paragraphDirection: textDirection(),
-          offsets: line.offsets,
-        );
+        final resting = offsetForStop(line, stop);
         if (resting == null) {
           return false;
         }
@@ -640,45 +715,7 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
               Rect.zero,
             )
             .dy;
-        if ((drawnY - lineCaretY).abs() > VisualCaretTraversal.lineEpsilon) {
-          return false;
-        }
-        if (!byWord) {
-          return true;
-        }
-        // Keep only stops that are also word edges, so a word jump lands on a
-        // place the character arrows can also reach. Deriving the word edges
-        // from the same visual stops is the whole point: logical word
-        // arithmetic can land somewhere else on the line entirely in bidi text.
-        final sides = VisualCaretTraversal.sidesAt(
-          line.boxes,
-          stop,
-          offsets: line.offsets,
-        );
-        final rtlSide = sides.rtl;
-        final ltrSide = sides.ltr;
-        // In an RTL paragraph, land on word STARTS only, so a lone space
-        // between two words is stepped over rather than being a stop of its own
-        // (user, 2026-07-28: "skip the lone space and start at the edge of the
-        // next word from the right for RTL or left for LTR"). Because the caret
-        // for an offset sits at the LEFT edge of an LTR glyph and the RIGHT edge
-        // of an RTL one, "where the word starts" already resolves to the correct
-        // side per word without a direction test.
-        //
-        // Deliberately NOT applied to LTR paragraphs: there, Option+arrow
-        // landing on word ENDS is the macOS convention every other app follows,
-        // and the fork's own tests assert it ('Welcome to Appflowy' expects
-        // offset 7). Changing plain English was not asked for.
-        if (paragraphIsRtl) {
-          return (rtlSide != null &&
-                  VisualCaretTraversal.isWordStart(text, rtlSide)) ||
-              (ltrSide != null &&
-                  VisualCaretTraversal.isWordStart(text, ltrSide));
-        }
-        return (rtlSide != null &&
-                VisualCaretTraversal.isWordBoundary(text, rtlSide)) ||
-            (ltrSide != null &&
-                VisualCaretTraversal.isWordBoundary(text, ltrSide));
+        return (drawnY - lineCaretY).abs() <= VisualCaretTraversal.lineEpsilon;
       }).toList();
     }
 
@@ -759,12 +796,7 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       return null;
     }
 
-    final offset = VisualCaretTraversal.restingOffset(
-      lines[landingLine].boxes,
-      nextX,
-      paragraphDirection: textDirection(),
-      offsets: lines[landingLine].offsets,
-    );
+    final offset = offsetForStop(lines[landingLine], nextX);
     if (offset == null) {
       return null;
     }

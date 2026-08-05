@@ -148,6 +148,15 @@ CommandShortcutEventHandler _moveCursorRightWordSelectCommandHandler =
   if (selection == null) {
     return KeyEventResult.ignored;
   }
+  // See the matching comment in arrow_left_command.dart's left-select
+  // handler — same fix, mirrored direction. Does NOT reopen D2.
+  if (extendSelectionVisually(
+    editorState,
+    towardsLeft: false,
+    byWord: true,
+  )) {
+    return KeyEventResult.handled;
+  }
   var forward = false;
   if (isRTL(editorState)) {
     forward = true;

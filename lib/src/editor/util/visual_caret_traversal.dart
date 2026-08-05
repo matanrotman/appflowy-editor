@@ -237,6 +237,33 @@ class VisualCaretTraversal {
     return false;
   }
 
+  /// Whether [offset] is where a non-whitespace SEGMENT begins — a word, or a
+  /// run of punctuation — in an RTL paragraph's word-jump stops.
+  ///
+  /// [isWordStart] alone treats punctuation the same as whitespace (neither
+  /// is a "word character"), so a comma got no stop of its own and a word
+  /// jump skipped straight over it to the next word (reported 2026-08-05:
+  /// from before "הקשר," Option+left should stop once right after קשר,
+  /// before the comma, THEN at על — it jumped straight to על). Whitespace
+  /// still gets no stop of its own — [isWordStart]'s "skip the lone space"
+  /// rule (2026-07-28) is unchanged — but a punctuation run now does, the
+  /// same way a word does.
+  static bool isSegmentStart(String text, int offset) {
+    if (offset < 0 || offset >= text.length) return false;
+    if (_segmentCategory(text[offset]) == _SegmentCategory.whitespace) {
+      return false;
+    }
+    return offset == 0 ||
+        _segmentCategory(text[offset - 1]) != _segmentCategory(text[offset]);
+  }
+
+  static _SegmentCategory _segmentCategory(String character) {
+    if (character.trim().isEmpty) return _SegmentCategory.whitespace;
+    return _isWordCharacter(character)
+        ? _SegmentCategory.word
+        : _SegmentCategory.punctuation;
+  }
+
   /// The strong direction of [character], or null when it is neutral.
   ///
   /// Deliberately covers the strong ranges that matter here rather than
@@ -265,6 +292,8 @@ class VisualCaretTraversal {
     return null;
   }
 }
+
+enum _SegmentCategory { whitespace, word, punctuation }
 
 /// One visual line's glyph boxes, each kept with the character offset it draws.
 ///
