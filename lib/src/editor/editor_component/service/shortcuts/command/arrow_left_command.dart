@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/material.dart';
 
@@ -112,11 +110,6 @@ bool extendSelectionVisually(
     byWord: byWord,
     toLineEdge: toLineEdge,
   );
-  zzLogExtend(
-    'extendSelectionVisually anchor=${selection.start.offset} '
-    'extentBefore=${extent.offset} towardsLeft=$towardsLeft '
-    'next=${next?.offset}',
-  );
   if (next == null) {
     return false;
   }
@@ -125,14 +118,6 @@ bool extendSelectionVisually(
     reason: SelectionUpdateReason.uiEvent,
   );
   return true;
-}
-
-// Temporary session-22 probe #3 — remove once diagnosed.
-void zzLogExtend(String line) {
-  try {
-    File('${Platform.environment['HOME']}/Desktop/ludwig_caret_probe.log')
-        .writeAsStringSync('${DateTime.now()} $line\n', mode: FileMode.append);
-  } catch (_) {}
 }
 
 // arrow left key + ctrl or command
