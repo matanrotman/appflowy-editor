@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math';
 import 'dart:ui';
 
@@ -5,6 +6,20 @@ import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+
+// Temporary session-23 probe — remove once the line-end overshoot bug
+// (plain arrow-left/right landing 1-2 characters past a wrapped line's true
+// end, correct on a block's own last line) is diagnosed. Logs every plain
+// (non-byWord) traversal's line-stop set and chosen landing to a fixed path
+// so a live repro can be read back without driving the user's screen.
+void zzProbeLog(String line) {
+  try {
+    File('${Platform.environment['HOME']}/Desktop/ludwig_caret_probe.log')
+        .writeAsStringSync('${DateTime.now()} $line\n', mode: FileMode.append);
+  } catch (_) {
+    // Best-effort only; never let the probe break real typing.
+  }
+}
 
 typedef TextSpanDecoratorForAttribute = InlineSpan Function(
   BuildContext context,
@@ -751,6 +766,14 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     var landingLine = lineIndex;
     double? nextX;
     final stops = stopsOnLine(lineIndex);
+    if (!byWord) {
+      zzProbeLog(
+        'ENTRY pos=${position.offset} towardsLeft=$towardsLeft '
+        'toLineEdge=$toLineEdge currentX=$currentX currentY=$currentY '
+        'lineIndex=$lineIndex lineOffsets=${lines[lineIndex].offsets.isEmpty ? null : '${lines[lineIndex].offsets.first}..${lines[lineIndex].offsets.last}'} '
+        'stops=$stops',
+      );
+    }
     if (toLineEdge) {
       if (stops.isNotEmpty) {
         final edge = towardsLeft ? stops.first : stops.last;
@@ -822,10 +845,22 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     // Still null means the block's own visual edge: the caller crosses to the
     // neighbouring block using the behaviour it already has.
     if (nextX == null) {
+      if (!byWord) {
+        zzProbeLog('EXIT nextX=null (block edge) landingLine=$landingLine');
+      }
       return null;
     }
 
+    if (!byWord) {
+      zzProbeLog(
+        'EXIT nextX=$nextX landingLine=$landingLine '
+        'landingLineOffsets=${lines[landingLine].offsets.isEmpty ? null : '${lines[landingLine].offsets.first}..${lines[landingLine].offsets.last}'}',
+      );
+    }
     final offset = offsetForStop(lines[landingLine], nextX);
+    if (!byWord) {
+      zzProbeLog('  -> resolvedOffset=$offset');
+    }
     if (offset == null) {
       return null;
     }
