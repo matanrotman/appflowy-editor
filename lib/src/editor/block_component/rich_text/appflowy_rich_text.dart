@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math';
 import 'dart:ui';
 
@@ -6,15 +5,6 @@ import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-
-// Temporary session-22 probe #2 — remove once diagnosed. See
-// getCursorRectInPosition below.
-void zzProbeLog(String line) {
-  try {
-    File('${Platform.environment['HOME']}/Desktop/ludwig_caret_probe.log')
-        .writeAsStringSync('${DateTime.now()} $line\n', mode: FileMode.append);
-  } catch (_) {}
-}
 
 typedef TextSpanDecoratorForAttribute = InlineSpan Function(
   BuildContext context,
@@ -212,13 +202,6 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
         (delta != null && position.offset > delta.length)) {
       return null;
     }
-
-    zzProbeLog(
-      'getCursorRectInPosition offset=${position.offset} '
-      'type=${position.runtimeType} isVisual=${position is VisualCaretPosition} '
-      'visualDx=${position is VisualCaretPosition ? position.visualLocalOffset.dx : null} '
-      'visualDy=${position is VisualCaretPosition ? position.visualLocalOffset.dy : null}',
-    );
 
     // Upstream (not Flutter's default of downstream): at a boundary between
     // an RTL run and an embedded LTR run, a single logical offset can map
@@ -721,13 +704,26 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     /// that line.
     ///
     /// The filter matters at a soft wrap: the boundary offset has two homes —
-    /// the end of the line above and the start of this one — and the renderer
-    /// resolves it upstream, i.e. to the line above. Offering its start-of-line
-    /// home as a stop here produced a caret drawn with THIS line's x at the
-    /// PREVIOUS line's y: pressing left from the start of a wrapped line put
-    /// the caret at the paragraph's top-left corner. Dropping it means that
-    /// place is reached by crossing the line, which is what the reader means by
-    /// it anyway.
+    /// the end of the line above and the start of this one. Checking only the
+    /// UPSTREAM home (the pre-2026-08-05 rule) correctly drops a line's
+    /// trailing wrap offset, which really does belong to the line above —
+    /// but it also drops that SAME offset from the line it starts, because
+    /// upstream always resolves to "above" regardless of which home is being
+    /// asked about. That silently excluded a line's own first offset from
+    /// its own stops. Measured 2026-08-05: [line, stop] here is verified by
+    /// its own glyph BOX to be on line 2 — `addLineFrom` only grouped it in
+    /// because its `top` matched — yet upstream affinity resolved its caret
+    /// to line 1's y, so the stop was rejected from the very line its glyph
+    /// is drawn on. A word jump landing there (the start of "האזרח", itself
+    /// a wrapped line's first word) then had nothing to land on within line
+    /// 2, fell through to the cross-line search, and re-found the same
+    /// offset via line 1's coordinates — a caret rendered at line 1's END,
+    /// beside the word BEFORE the wrap, instead of at the start of the word
+    /// the jump actually landed on.
+    ///
+    /// Accepting either affinity keeps the original exclusion (a stop whose
+    /// BOTH homes are elsewhere still fails) while admitting a stop that is
+    /// genuinely this line's own start.
     List<double> stopsOnLine(int index) {
       final line = lines[index];
       final lineCaretY = caretY(index);
@@ -736,13 +732,19 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
         if (resting == null) {
           return false;
         }
-        final drawnY = paragraph
+        double drawnYWith(TextAffinity affinity) => paragraph
             .getOffsetForCaret(
-              TextPosition(offset: resting, affinity: TextAffinity.upstream),
+              TextPosition(offset: resting, affinity: affinity),
               Rect.zero,
             )
             .dy;
-        return (drawnY - lineCaretY).abs() <= VisualCaretTraversal.lineEpsilon;
+        final matchesUpstream =
+            (drawnYWith(TextAffinity.upstream) - lineCaretY).abs() <=
+                VisualCaretTraversal.lineEpsilon;
+        final matchesDownstream =
+            (drawnYWith(TextAffinity.downstream) - lineCaretY).abs() <=
+                VisualCaretTraversal.lineEpsilon;
+        return matchesUpstream || matchesDownstream;
       }).toList();
     }
 
@@ -828,12 +830,6 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       return null;
     }
 
-    if (byWord) {
-      zzProbeLog(
-        'getNextVisualCaretPosition EXIT offset=$offset '
-        'visualLocalOffset=${Offset(nextX, caretY(landingLine))}',
-      );
-    }
     return VisualCaretPosition(
       path: widget.node.path,
       offset: offset,
