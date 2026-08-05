@@ -742,7 +742,14 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     List<double> stopsOnLine(int index) {
       final line = lines[index];
       final lineCaretY = caretY(index);
-      return VisualCaretTraversal.stopsFor(line.boxes).where((stop) {
+      final isBlockFinalLine =
+          line.offsets.isNotEmpty && line.offsets.last == text.length - 1;
+      return VisualCaretTraversal.stopsForLine(
+        line.boxes,
+        line.offsets,
+        text,
+        isBlockFinalLine: isBlockFinalLine,
+      ).where((stop) {
         final resting = offsetForStop(line, stop);
         if (resting == null) {
           return false;

@@ -83,6 +83,54 @@ class VisualCaretTraversal {
     return stops;
   }
 
+  /// [stopsFor], with the OUTER edge of a trailing invisible line-wrap
+  /// space removed — unless [isBlockFinalLine], where a trailing space is
+  /// real content rather than a wrap artifact.
+  ///
+  /// A soft wrap's trailing whitespace still measures a real box even
+  /// though nothing is drawn for it (the renderer just breaks the line
+  /// after it), so [stopsFor] reports a caret stop past the last VISIBLE
+  /// character — the caret can land in blank space nothing is drawn in.
+  /// Measured 2026-08-06: at the wrap between "…לזו של" and "האזרח…", the
+  /// space after "של" contributed two stops, one right after the ל (its
+  /// INNER edge, bordering real content — kept) and one a further
+  /// character-width to the left (its OUTER edge, bordering nothing on
+  /// this line — the reported "falls one space too far"). The outer edge
+  /// is dropped only when it borders no other box on the line, which is
+  /// what makes it a wrap artifact rather than ordinary text.
+  static List<double> stopsForLine(
+    List<TextBox> boxes,
+    List<int> offsets,
+    String text, {
+    required bool isBlockFinalLine,
+  }) {
+    final stops = stopsFor(boxes);
+    if (isBlockFinalLine || boxes.isEmpty) return stops;
+    final lastOffset = offsets.last;
+    if (lastOffset < 0 || lastOffset >= text.length) return stops;
+    if (text[lastOffset].trim().isNotEmpty) return stops;
+
+    final trailingBox = boxes.last;
+    bool bordersOtherBox(double edge) {
+      for (var i = 0; i < boxes.length - 1; i++) {
+        if ((boxes[i].left - edge).abs() <= epsilon ||
+            (boxes[i].right - edge).abs() <= epsilon) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    final leftIsLonely = !bordersOtherBox(trailingBox.left);
+    final rightIsLonely = !bordersOtherBox(trailingBox.right);
+    double? outerEdge;
+    if (leftIsLonely && !rightIsLonely) outerEdge = trailingBox.left;
+    if (rightIsLonely && !leftIsLonely) outerEdge = trailingBox.right;
+    if (outerEdge == null) return stops;
+
+    return stops.where((s) => (s - outerEdge!).abs() > epsilon).toList();
+  }
+
   /// The caret position one visual step from [currentX].
   ///
   /// Returns null at the line's visual edge — the caller's signal to cross into
