@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math';
 import 'dart:ui';
 
@@ -6,19 +5,6 @@ import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-
-// Temporary session-22 probe — remove before this branch merges. Logs the
-// byWord traversal to a fixed path so a live repro can be read back without
-// driving the user's screen. See appflowy_rich_text.dart's
-// getNextVisualCaretPosition/offsetForStop.
-void zzProbeLog(String line) {
-  try {
-    File('${Platform.environment['HOME']}/Desktop/ludwig_caret_probe.log')
-        .writeAsStringSync('${DateTime.now()} $line\n', mode: FileMode.append);
-  } catch (_) {
-    // Best-effort only; never let the probe break real typing.
-  }
-}
 
 typedef TextSpanDecoratorForAttribute = InlineSpan Function(
   BuildContext context,
@@ -369,11 +355,21 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     // and the deferred embedded-date question — untouched. Only positions this
     // editor's own movement created reach here, so no existing path changes.
     //
-    // Horizontal only: vertical geometry and line height come from the offset,
-    // which the code above already resolves correctly (including the empty-line
-    // placeholder case).
+    // Both axes: a word/line jump can land the caret exactly AT a soft-wrap
+    // boundary offset, which — like the pointer-hint branch above — has two
+    // homes on different LINES, not just two x's on the same one. Upstream
+    // affinity always resolves such an offset to the END of the line ABOVE;
+    // the traversal that produced this position already measured which line
+    // it actually crossed INTO, and dropping that y (originally "horizontal
+    // only" because the common case is a same-line directional seam) sent
+    // the caret to the previous line's end whenever a jump landed on such a
+    // boundary — reported 2026-08-05: Option+Right from the end of "האזרח"
+    // to jump back one word, when that word's start happened to be a
+    // wrapped line's first offset, drew the caret at the END of the line
+    // ABOVE (next to the previous word) instead of at "האזרח" itself, even
+    // though the underlying offset was already correct.
     if (position is VisualCaretPosition && delta?.isNotEmpty == true) {
-      cursorOffset = Offset(position.visualLocalOffset.dx, cursorOffset.dy);
+      cursorOffset = position.visualLocalOffset;
     }
 
     if (placeholderCursorHeight != null) {
@@ -494,14 +490,6 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     final currentY = position is VisualCaretPosition
         ? position.visualLocalOffset.dy
         : caretOffset.dy;
-
-    if (byWord) {
-      zzProbeLog(
-        'ENTRY pos=${position.offset} towardsLeft=$towardsLeft '
-        'currentX=$currentX text.length=${text.length} '
-        'fontFamily=${paragraph.text.style?.fontFamily}',
-      );
-    }
 
     // The per-character boxes of the caret's OWN visual line, each kept with
     // its character offset.
@@ -667,11 +655,6 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       );
       final rtlSide = sides.rtl;
       final ltrSide = sides.ltr;
-      zzProbeLog(
-        '  stop=$stop rtlSide=$rtlSide ltrSide=$ltrSide '
-        'rtlChar=${rtlSide != null && rtlSide >= 0 && rtlSide < text.length ? text[rtlSide] : null} '
-        'ltrChar=${ltrSide != null && ltrSide >= 0 && ltrSide < text.length ? text[ltrSide] : null}',
-      );
       // Unlike the non-byWord branch above, finding neither side valid here
       // means this stop is NOT a word edge at all, and must return null so
       // the caller (stopsOnLine's filter) rejects it — that rejection is
@@ -820,19 +803,10 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     // Still null means the block's own visual edge: the caller crosses to the
     // neighbouring block using the behaviour it already has.
     if (nextX == null) {
-      if (byWord) {
-        zzProbeLog('EXIT nextX=null (block edge) landingLine=$landingLine');
-      }
       return null;
     }
 
     final offset = offsetForStop(lines[landingLine], nextX);
-    if (byWord) {
-      zzProbeLog(
-        'EXIT nextX=$nextX landingLine=$landingLine offset=$offset '
-        'char=${offset != null && offset >= 0 && offset < text.length ? text[offset] : null}',
-      );
-    }
     if (offset == null) {
       return null;
     }
