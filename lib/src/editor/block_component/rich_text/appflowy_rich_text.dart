@@ -444,6 +444,22 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       return null;
     }
 
+    // Temporary probe (session 24 follow-up) — dump raw glyph geometry for
+    // the region around the "spoudaios polites" repro, whenever a click in
+    // roughly that x-range comes through. Remove before shipping.
+    if (localOffset.dx > 700 && localOffset.dx < 950) {
+      final dump = <String>[];
+      for (var i = 0; i < offsets.length; i++) {
+        if (offsets[i] >= 125 && offsets[i] <= 155) {
+          dump.add(
+            '${offsets[i]}:${text[offsets[i]]}='
+            '[${boxes[i].left.toStringAsFixed(1)},${boxes[i].right.toStringAsFixed(1)}]',
+          );
+        }
+      }
+      _richTextProbe('GEOMETRY DUMP clickX=${localOffset.dx} boxes: ${dump.join(" ")}');
+    }
+
     // The y the RENDERER draws a caret at, per line. Used below ONLY for the
     // returned VisualCaretPosition's own y (so the caret renders correctly) —
     // see the identical comment in getNextVisualCaretPosition for why a
