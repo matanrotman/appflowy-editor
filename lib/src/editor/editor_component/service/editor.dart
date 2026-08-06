@@ -25,7 +25,7 @@ class AppFlowyEditor extends StatefulWidget {
     Map<String, BlockComponentBuilder>? blockComponentBuilders,
     List<CharacterShortcutEvent>? characterShortcutEvents,
     List<CommandShortcutEvent>? commandShortcutEvents,
-    this.contextMenuBuilder,
+    List<List<ContextMenuItem>>? contextMenuItems,
     this.contentInsertionConfiguration,
     this.editable = true,
     this.autoFocus = false,
@@ -52,7 +52,8 @@ class AppFlowyEditor extends StatefulWidget {
         characterShortcutEvents =
             characterShortcutEvents ?? standardCharacterShortcutEvents,
         commandShortcutEvents =
-            commandShortcutEvents ?? standardCommandShortcutEvents;
+            commandShortcutEvents ?? standardCommandShortcutEvents,
+        contextMenuItems = contextMenuItems ?? standardContextMenuItems;
 
   final EditorState editorState;
 
@@ -120,13 +121,16 @@ class AppFlowyEditor extends StatefulWidget {
   /// ```
   final List<CommandShortcutEvent> commandShortcutEvents;
 
-  /// The context menu builder.
+  /// The context menu items.
   ///
-  /// It will be shown when the user right click on the editor.
+  /// They will be shown when the user right click on the editor.
+  /// Each item will be separated by a divider.
   ///
-  /// See the built-in [ContextMenu] implementation.
+  /// Defaults to [standardContextMenuItems].
   ///
-  final ContextMenuWidgetBuilder? contextMenuBuilder;
+  /// If empty the context menu won't appear.
+  ///
+  final List<List<ContextMenuItem>>? contextMenuItems;
 
   /// Provide a editorScrollController to control the scroll behavior
   ///
@@ -340,7 +344,7 @@ class _AppFlowyEditorState extends State<AppFlowyEditor> {
         cursorColor: widget.editorStyle.cursorColor,
         selectionColor: widget.editorStyle.selectionColor,
         showMagnifier: widget.showMagnifier,
-        contextMenuBuilder: widget.contextMenuBuilder,
+        contextMenuItems: widget.contextMenuItems,
         dropTargetStyle: widget.dropTargetStyle,
         child: child,
       );

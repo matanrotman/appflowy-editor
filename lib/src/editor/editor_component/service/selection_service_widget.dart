@@ -11,7 +11,7 @@ class SelectionServiceWidget extends StatefulWidget {
     this.cursorColor = const Color(0xFF00BCF0),
     this.selectionColor = const Color.fromARGB(53, 111, 201, 231),
     this.showMagnifier = true,
-    this.contextMenuBuilder,
+    this.contextMenuItems,
     this.dropTargetStyle,
     required this.child,
   });
@@ -19,7 +19,7 @@ class SelectionServiceWidget extends StatefulWidget {
   final Widget child;
   final Color cursorColor;
   final Color selectionColor;
-  final ContextMenuWidgetBuilder? contextMenuBuilder;
+  final List<List<ContextMenuItem>>? contextMenuItems;
   final AppFlowyDropTargetStyle? dropTargetStyle;
 
   /// Show the magnifier or not.
@@ -48,7 +48,7 @@ class _SelectionServiceWidgetState extends State<SelectionServiceWidget>
         key: forwardKey,
         cursorColor: widget.cursorColor,
         selectionColor: widget.selectionColor,
-        contextMenuBuilder: widget.contextMenuBuilder,
+        contextMenuItems: widget.contextMenuItems,
         dropTargetStyle:
             widget.dropTargetStyle ?? const AppFlowyDropTargetStyle(),
         child: widget.child,
