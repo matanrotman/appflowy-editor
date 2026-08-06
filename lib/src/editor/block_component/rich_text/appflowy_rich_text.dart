@@ -526,24 +526,50 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
           ? a
           : b,
     );
-    final resolvedOffset = VisualCaretTraversal.restingOffset(
-      line.boxes,
-      nearestStop,
-      paragraphDirection: textDirection(),
-      offsets: line.offsets,
-    );
-    if (localOffset.dx > 700 && localOffset.dx < 950) {
-      final sides = VisualCaretTraversal.sidesAt(
-        line.boxes,
-        nearestStop,
-        offsets: line.offsets,
-      );
-      _richTextProbe(
-        'RESTING-OFFSET-DECISION clickX=${localOffset.dx} nearestStop=$nearestStop '
-        'sidesAt.rtl=${sides.rtl} sidesAt.ltr=${sides.ltr} '
-        'paragraphDirection=${textDirection()} resolvedOffset=$resolvedOffset',
-      );
+
+    // A stop can be shared by two DIFFERENT offsets — one per direction —
+    // when a mirrored character (e.g. a paren rendered adjacent to an
+    // embedded LTR phrase inside RTL text) sits right at the boundary.
+    // Measured live (session 24 follow-up, the "polites" loop): at such a
+    // boundary, resolving via VisualCaretTraversal.restingOffset (which
+    // defers to the PARAGRAPH's direction) is right for keyboard movement —
+    // there is no pixel involved there — but wrong for a raw click, which
+    // DOES have a pixel, and discarding it in favour of a direction default
+    // threw away the one thing that actually disambiguates a click.
+    //
+    // Fix: if the RAW click (pre-snap) falls inside a specific glyph's own
+    // box, resolve directly from that glyph and its actual direction, using
+    // which of its two edges the click is nearer to. Only fall back to the
+    // direction-default resolution when the click doesn't land inside any
+    // glyph's box at all (a true gap between stops, e.g. past a line's end
+    // or past the page margin) — that case is unaffected and already tested.
+    int? offsetFromContainingBox() {
+      for (var i = 0; i < line.boxes.length; i++) {
+        final box = line.boxes[i];
+        if (localOffset.dx < box.left || localOffset.dx > box.right) {
+          continue;
+        }
+        final closerToLeft =
+            (localOffset.dx - box.left) < (box.right - localOffset.dx);
+        final isLtr = box.direction == TextDirection.ltr;
+        final start = line.offsets[i];
+        final end = start + 1;
+        if (isLtr) {
+          return closerToLeft ? start : end;
+        } else {
+          return closerToLeft ? end : start;
+        }
+      }
+      return null;
     }
+
+    final resolvedOffset = offsetFromContainingBox() ??
+        VisualCaretTraversal.restingOffset(
+          line.boxes,
+          nearestStop,
+          paragraphDirection: textDirection(),
+          offsets: line.offsets,
+        );
     if (resolvedOffset == null) {
       return null;
     }
