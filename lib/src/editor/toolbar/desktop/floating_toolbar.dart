@@ -100,7 +100,9 @@ class _FloatingToolbarState extends State<FloatingToolbar>
 
   @override
   void dispose() {
-    Debounce.cancel(_debounceKey);
+    // Two keys, not one -- see the comment above _selectionDebounceKey.
+    Debounce.cancel(_selectionDebounceKey);
+    Debounce.cancel(_scrollDebounceKey);
 
     _toolbarContainer?.remove();
     _toolbarContainer?.dispose();
