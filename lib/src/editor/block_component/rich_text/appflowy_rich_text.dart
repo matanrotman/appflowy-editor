@@ -443,9 +443,22 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       return null;
     }
 
-    // The y the RENDERER draws a caret at, per line — see the identical
-    // comment in getNextVisualCaretPosition for why this, and not a
-    // "nearest vertical band" match against the glyph boxes themselves.
+    // The y the RENDERER draws a caret at, per line. Used below ONLY for the
+    // returned VisualCaretPosition's own y (so the caret renders correctly) —
+    // see the identical comment in getNextVisualCaretPosition for why a
+    // MOVED-TO caret's line is found this way rather than by glyph-box band.
+    //
+    // ⚠️ Deliberately NOT used to decide which line a raw CLICK belongs to
+    // (below) — that bug was measured live (session 24): the caret-y
+    // convention places the comparison point ABOVE the glyph box (the same
+    // line-height-multiplier offset noted throughout this file), which is
+    // fine for a caret that is already AT a known position, but a mouse
+    // click's y falls somewhere inside the glyph's own rendered height, not
+    // at that offset point — so comparing against caret-y flipped the click
+    // to the neighbouring line depending on exactly where within a line's
+    // height the click landed. Double-click, drag-select and shift-click all
+    // failed the same way, tracing to this one line-selection step, not to
+    // stop-finding (which resolved correctly whenever the line was right).
     double caretYOf(VisualLine line) => paragraph
         .getOffsetForCaret(
           TextPosition(
@@ -456,10 +469,23 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
         )
         .dy;
 
+    // A click's line: nearest by distance to the line's own glyph-box
+    // vertical range [top, bottom] — 0 when the click's y falls inside it.
+    // Lines are sorted top-to-bottom and their bands are contiguous, so this
+    // is monotonic in y and does not flip near a boundary the way comparing
+    // against caret-y did.
+    double bandDistance(VisualLine line, double y) {
+      final top = line.boxes.map((b) => b.top).reduce(min);
+      final bottom = line.boxes.map((b) => b.bottom).reduce(max);
+      if (y < top) return top - y;
+      if (y > bottom) return y - bottom;
+      return 0;
+    }
+
     var lineIndex = 0;
-    var bestDistance = (caretYOf(lines[0]) - localOffset.dy).abs();
+    var bestDistance = bandDistance(lines[0], localOffset.dy);
     for (var i = 1; i < lines.length; i++) {
-      final distance = (caretYOf(lines[i]) - localOffset.dy).abs();
+      final distance = bandDistance(lines[i], localOffset.dy);
       if (distance < bestDistance) {
         bestDistance = distance;
         lineIndex = i;
