@@ -2,6 +2,8 @@ import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+const Duration _kDesktopAutoScrollTickDuration = Duration(milliseconds: 80);
+
 class DesktopScrollService extends StatefulWidget {
   const DesktopScrollService({
     super.key,
@@ -26,6 +28,7 @@ class _DesktopScrollServiceState extends State<DesktopScrollService>
   @override
   double? get onePageHeight {
     final renderBox = context.findRenderObject() as RenderBox?;
+
     return renderBox?.size.height;
   }
 
@@ -41,8 +44,10 @@ class _DesktopScrollServiceState extends State<DesktopScrollService>
   int? get page {
     if (onePageHeight != null) {
       final scrollExtent = maxScrollExtent - minScrollExtent;
+
       return (scrollExtent / onePageHeight!).ceil();
     }
+
     return null;
   }
 
@@ -108,7 +113,7 @@ class _DesktopScrollServiceState extends State<DesktopScrollService>
       offset,
       edgeOffset: edgeOffset,
       direction: direction,
-      duration: duration,
+      duration: duration ?? _kDesktopAutoScrollTickDuration,
     );
   }
 

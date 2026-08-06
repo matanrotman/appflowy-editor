@@ -107,6 +107,7 @@ mixin NestedBlockComponentStatefulWidgetMixin<
         );
       }
     }
+
     return configuration.indentPadding(node, direction);
   }
 
@@ -138,7 +139,7 @@ mixin NestedBlockComponentStatefulWidgetMixin<
         Positioned.fill(
           left: cachedLeft,
           child: Container(
-            color: backgroundColor,
+            decoration: decoration,
           ),
         ),
         NestedListWidget(

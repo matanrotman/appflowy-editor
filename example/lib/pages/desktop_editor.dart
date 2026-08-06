@@ -97,6 +97,14 @@ class _DesktopEditorState extends State<DesktopEditor> {
           dropTargetStyle: const AppFlowyDropTargetStyle(
             color: Colors.red,
           ),
+          contextMenuBuilder: (context, position, editorState, onPressed) {
+            return ContextMenu(
+              position: position,
+              editorState: editorState,
+              items: standardContextMenuItems,
+              onPressed: onPressed,
+            );
+          },
           header: Padding(
             padding: const EdgeInsets.only(bottom: 10.0),
             child: Image.asset(
@@ -155,6 +163,7 @@ class _DesktopEditorState extends State<DesktopEditor> {
           ),
         ),
       );
+
       // Add a hover menu to the linked text.
       if (rects.isNotEmpty && textInsert.attributes?.href != null) {
         widgets.add(

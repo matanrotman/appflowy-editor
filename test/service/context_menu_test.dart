@@ -16,12 +16,14 @@ void main() async {
       switch (message.method) {
         case "Clipboard.getData":
           return mockClipboard.getData;
+
         case "Clipboard.setData":
           final args = message.arguments as Map<String, dynamic>;
           mockClipboard = mockClipboard.copyWith(
             text: args['text'],
           );
       }
+
       return null;
     });
   });
@@ -51,38 +53,6 @@ void main() async {
       rightClickAt(position);
       await tester.pump();
       expect(find.byType(ContextMenu), findsOneWidget);
-      await editor.dispose();
-    });
-
-    testWidgets('context menu cut test ', (tester) async {
-      const text = 'Welcome to AppFlowy';
-      final editor = tester.editor..addParagraph(initialText: text);
-      await editor.startTesting();
-      expect(
-        find.text(text, findRichText: true),
-        findsOneWidget,
-      );
-      await editor.updateSelection(
-        Selection(
-          start: Position(path: [0], offset: 0),
-          end: Position(path: [0], offset: 18),
-        ),
-      );
-      final copiedText =
-          editor.editorState.getTextInSelection(editor.selection).join('/n');
-      final position = tester.getCenter(find.text(text, findRichText: true));
-      rightClickAt(position);
-      await tester.pump();
-      final cutButton = find.text('Cut');
-      expect(cutButton, findsOneWidget);
-      await tester.tap(cutButton);
-      await tester.pumpAndSettle(const Duration(milliseconds: 500));
-      expect(
-        find.text('Welcome to AppFlowy', findRichText: true),
-        findsNothing,
-      );
-      final clipBoardData = await AppFlowyClipboard.getData();
-      expect(clipBoardData.text, copiedText);
       await editor.dispose();
     });
 

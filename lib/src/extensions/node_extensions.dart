@@ -19,6 +19,7 @@ extension NodeExtensions on Node {
       level++;
       parent = parent.parent;
     }
+
     return level;
   }
 
@@ -33,9 +34,45 @@ extension NodeExtensions on Node {
   Rect get rect {
     if (renderBox != null) {
       final boxOffset = renderBox!.localToGlobal(Offset.zero);
+
       return boxOffset & renderBox!.size;
     }
+
     return Rect.zero;
+  }
+
+  Node? nextNodeWhere(bool Function(Node element) test) {
+    for (final child in children) {
+      final matchingNode = child._thisOrDescendantMatching(test);
+      if (matchingNode != null) {
+        return matchingNode;
+      }
+    }
+
+    var next = this.next;
+    while (next != null) {
+      final nextDescendentMatch = next._thisOrDescendantMatching(test);
+      if (nextDescendentMatch != null) {
+        return nextDescendentMatch;
+      }
+      next = next.next;
+    }
+
+    return parent?.next?._thisOrDescendantMatching(test);
+  }
+
+  Node? _thisOrDescendantMatching(bool Function(Node element) test) {
+    if (test(this)) {
+      return this;
+    }
+    for (final child in children) {
+      final matchingNode = child._thisOrDescendantMatching(test);
+      if (matchingNode != null) {
+        return matchingNode;
+      }
+    }
+
+    return null;
   }
 
   /// Returns the first previous node in the subtree that satisfies the given predicate
@@ -56,8 +93,10 @@ extension NodeExtensions on Node {
       if (test(parent)) {
         return parent;
       }
+
       return parent.previousNodeWhere(test);
     }
+
     return null;
   }
 
@@ -75,6 +114,7 @@ extension NodeExtensions on Node {
         return child;
       }
     }
+
     return null;
   }
 
@@ -97,8 +137,10 @@ extension NodeExtensions on Node {
       if (test(next)) {
         return next;
       }
+
       return next.findDownward(test);
     }
+
     return null;
   }
 
@@ -130,6 +172,7 @@ extension NodeExtensions on Node {
       }
       parent = parent.parent;
     }
+
     return false;
   }
 
@@ -138,6 +181,7 @@ extension NodeExtensions on Node {
       return this;
     }
     final parent = this.parent;
+
     return parent?.findParent(test);
   }
 }
@@ -164,7 +208,7 @@ extension NodesExtensions<T extends Node> on List<T> {
     }
 
     selection = selection.normalized;
-    final nodes = this.normalized;
+    final nodes = normalized;
 
     if (nodes.length == 1) {
       return nodes.first.allSatisfyInSelection(selection, test);

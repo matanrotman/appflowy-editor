@@ -28,6 +28,7 @@ extension SelectionTransform on EditorState {
     final index = delta.prevRunePosition(selection.startIndex);
     transaction.deleteText(node, index, selection.startIndex - index);
     await apply(transaction);
+
     return true;
   }
 
@@ -222,6 +223,7 @@ extension SelectionTransform on EditorState {
       this.selection = selection.collapse(
         atStart: direction == SelectionMoveDirection.forward,
       );
+
       return;
     }
 
@@ -253,6 +255,7 @@ extension SelectionTransform on EditorState {
             reason: SelectionUpdateReason.uiEvent,
           );
         }
+
         return;
       }
       // the cursor is at the end of the node
@@ -260,13 +263,17 @@ extension SelectionTransform on EditorState {
       else if (direction == SelectionMoveDirection.backward &&
           end != null &&
           end.offset <= offset) {
-        final nextStart = node.next?.selectable?.start();
+        final nextStart = node
+            .nextNodeWhere((element) => element.selectable != null)
+            ?.selectable
+            ?.start();
         if (nextStart != null) {
           updateSelectionWithReason(
             Selection.collapsed(nextStart),
             reason: SelectionUpdateReason.uiEvent,
           );
         }
+
         return;
       }
     }
@@ -290,6 +297,7 @@ extension SelectionTransform on EditorState {
           throw UnimplementedError();
         }
         break;
+
       case SelectionMoveRange.word:
         final delta = node.delta;
         if (delta != null) {
@@ -317,6 +325,7 @@ extension SelectionTransform on EditorState {
         }
 
         break;
+
       case SelectionMoveRange.line:
         if (delta != null) {
           // move the cursor to the left or right by one line
@@ -334,6 +343,7 @@ extension SelectionTransform on EditorState {
           throw UnimplementedError();
         }
         break;
+
       default:
         throw UnimplementedError();
     }

@@ -9,8 +9,10 @@ mixin BlockComponentAlignMixin {
     switch (alignString) {
       case 'center':
         return Alignment.center;
+
       case 'right':
         return Alignment.centerRight;
+
       case 'left':
         return Alignment.centerLeft;
       // 'justify' intentionally returns null here: it is a *text* instruction,

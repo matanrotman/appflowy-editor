@@ -50,12 +50,13 @@ CommandShortcutEventHandler _convertToParagraphCommandHandler = (editorState) {
           ParagraphBlockKeys.delta: delta.toJson(),
         },
         textDirection: textDirection,
-        children: node.children,
+        children: node.children.map((e) => e.deepCopy()).toList(),
       ),
       deepCopy: true,
     )
     ..deleteNode(node)
     ..afterSelection = transaction.beforeSelection;
   editorState.apply(transaction);
+
   return KeyEventResult.handled;
 };

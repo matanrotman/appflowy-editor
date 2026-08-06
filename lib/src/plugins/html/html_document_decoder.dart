@@ -5,9 +5,20 @@ import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' show parse;
 
-class DocumentHTMLDecoder extends Converter<String, Document> {
-  DocumentHTMLDecoder();
+typedef ElementParser = Iterable<Node> Function(
+  dom.Element element,
+  (Delta, Iterable<Node>) Function(
+    dom.Element element, {
+    String? type,
+  }) parseDeltaElement,
+);
 
+class DocumentHTMLDecoder extends Converter<String, Document> {
+  DocumentHTMLDecoder({
+    this.customDecoders = const {},
+  });
+
+  final Map<String, ElementParser> customDecoders;
   // Set to true to enable parsing color from HTML
   static bool enableColorParse = true;
 
@@ -26,6 +37,7 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
     /// this method needs to be removed in the future as it is not stable
     final parseForSingleChild = body.children.length == 1 &&
         HTMLTags.formattingElements.contains(body.children.first.localName);
+
     return Document.blank(withInitialText: false)
       ..insert(
         [0],
@@ -67,6 +79,13 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
               type: type ?? ParagraphBlockKeys.type,
             ),
           );
+        } else if (customDecoders.containsKey(localName)) {
+          if (delta.isNotEmpty) {
+            nodes.add(paragraphNode(delta: delta));
+          }
+          nodes.addAll(
+            customDecoders[localName]!(domNode, _parseDeltaElement),
+          );
         }
       } else if (domNode is dom.Text) {
         // skip the empty text node
@@ -81,6 +100,7 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
     if (delta.isNotEmpty) {
       nodes.add(paragraphNode(delta: delta));
     }
+
     return nodes;
   }
 
@@ -92,22 +112,31 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
     switch (localName) {
       case HTMLTags.h1:
         return _parseHeadingElement(element, level: 1);
+
       case HTMLTags.h2:
         return _parseHeadingElement(element, level: 2);
+
       case HTMLTags.h3:
         return _parseHeadingElement(element, level: 3);
+
       case HTMLTags.h4:
         return _parseHeadingElement(element, level: 4);
+
       case HTMLTags.h5:
         return _parseHeadingElement(element, level: 5);
+
       case HTMLTags.h6:
         return _parseHeadingElement(element, level: 6);
+
       case HTMLTags.unorderedList:
         return _parseUnOrderListElement(element);
+
       case HTMLTags.orderedList:
         return _parseOrderListElement(element);
+
       case HTMLTags.table:
         return _parseTable(element);
+
       case HTMLTags.list:
         return [
           _parseListElement(
@@ -115,12 +144,16 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
             type: type,
           ),
         ];
+
       case HTMLTags.paragraph:
         return _parseParagraphElement(element);
+
       case HTMLTags.blockQuote:
         return [_parseBlockQuoteElement(element)];
+
       case HTMLTags.image:
         return [_parseImageElement(element)];
+
       default:
         return _parseParagraphElement(element);
     }
@@ -168,6 +201,7 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
       nodes.addAll(tabledata);
       rowLength++;
     }
+
     return (colLength, rowLength, nodes);
   }
 
@@ -221,6 +255,7 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
     } else {
       nodes.addAll(_parseTableDataElementsData(element));
     }
+
     return nodes;
   }
 
@@ -251,6 +286,7 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
     if (delta.isNotEmpty) {
       nodes.add(paragraphNode(delta: delta));
     }
+
     return nodes;
   }
 
@@ -264,17 +300,22 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
       case HTMLTags.bold || HTMLTags.strong:
         attributes = {AppFlowyRichTextKeys.bold: true};
         break;
+
       case HTMLTags.italic || HTMLTags.em:
         attributes = {AppFlowyRichTextKeys.italic: true};
         break;
+
       case HTMLTags.underline:
         attributes = {AppFlowyRichTextKeys.underline: true};
         break;
+
       case HTMLTags.del:
         attributes = {AppFlowyRichTextKeys.strikethrough: true};
         break;
+
       case HTMLTags.code:
         attributes = {AppFlowyRichTextKeys.code: true};
+
       case HTMLTags.span || HTMLTags.mark:
         final deltaAttributes = _getDeltaAttributesFromHTMLAttributes(
               element.attributes,
@@ -282,6 +323,7 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
             {};
         attributes.addAll(deltaAttributes);
         break;
+
       case HTMLTags.anchor:
         final href = element.attributes['href'];
         if (href != null) {
@@ -292,12 +334,14 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
       case HTMLTags.strikethrough:
         attributes = {AppFlowyRichTextKeys.strikethrough: true};
         break;
+
       default:
         break;
     }
     for (final child in element.children) {
       attributes.addAll(_parserFormattingElementAttributes(child));
     }
+
     return attributes;
   }
 
@@ -306,6 +350,7 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
     required int level,
   }) {
     final (delta, specialNodes) = _parseDeltaElement(element);
+
     return [
       headingNode(
         level: level,
@@ -317,6 +362,7 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
 
   Node _parseBlockQuoteElement(dom.Element element) {
     final (delta, nodes) = _parseDeltaElement(element);
+
     return quoteNode(
       delta: delta,
       children: nodes,
@@ -348,7 +394,22 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
         element.children.length == 1 &&
         element.children.first.localName == HTMLTags.paragraph) {
       (delta, node) = _parseDeltaElement(element.children.first, type: type);
+    } else if (delta.isEmpty &&
+        element.children.isNotEmpty &&
+        element.children.first.localName == HTMLTags.paragraph) {
+      final paragraphElement = element.children.first;
+      (delta, _) = _parseDeltaElement(paragraphElement, type: type);
+
+      final remainingChildren = element.children.skip(1);
+      node = remainingChildren.expand((child) {
+        if (HTMLTags.specialElements.contains(child.localName)) {
+          return _parseSpecialElements(child, type: type);
+        }
+
+        return <Node>[];
+      }).toList();
     }
+
     return Node(
       type: type,
       children: node,
@@ -358,6 +419,7 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
 
   Iterable<Node> _parseParagraphElement(dom.Element element) {
     final (delta, specialNodes) = _parseDeltaElement(element);
+
     return [paragraphNode(delta: delta), ...specialNodes];
   }
 
@@ -383,7 +445,8 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
     for (final child in children) {
       if (child is dom.Element) {
         if (child.children.isNotEmpty &&
-            HTMLTags.formattingElements.contains(child.localName) == false) {
+            HTMLTags.formattingElements.contains(child.localName) == false &&
+            HTMLTags.specialElements.contains(child.localName) == false) {
           //rich editor for webs do this so handling that case for href  <a href="https://www.google.com" rel="noopener noreferrer" target="_blank"><strong><em><u>demo</u></em></strong></a>
 
           nodes.addAll(_parseElement(child.children, type: type));
@@ -395,6 +458,10 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
                 type: ParagraphBlockKeys.type,
               ),
             );
+          } else if (customDecoders.containsKey(child.localName)) {
+            nodes.addAll(
+              customDecoders[child.localName]!(child, _parseDeltaElement),
+            );
           } else {
             final attributes = _parserFormattingElementAttributes(child);
             delta.insert(
@@ -403,10 +470,13 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
             );
           }
         }
-      } else {
-        delta.insert(child.text?.replaceAll(RegExp(r'\n+$'), '') ?? '');
+      } else if (child is dom.Text) {
+        delta.insert(child.text.replaceAll(RegExp(r'\n+$'), ''));
       }
+      // other node types (e.g. dom.Comment) carry no visible content and
+      // are intentionally skipped, mirroring _parseElement's handling.
     }
+
     return (delta, nodes);
   }
 
@@ -439,9 +509,11 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
           case 'underline':
             attributes[AppFlowyRichTextKeys.underline] = true;
             break;
+
           case 'line-through':
             attributes[AppFlowyRichTextKeys.strikethrough] = true;
             break;
+
           default:
             break;
         }
@@ -497,6 +569,7 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
       }
       result[tuples[0].trim()] = tuples[1].trim();
     }
+
     return result;
   }
 }

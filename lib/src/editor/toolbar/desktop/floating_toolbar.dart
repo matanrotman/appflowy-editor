@@ -100,13 +100,17 @@ class _FloatingToolbarState extends State<FloatingToolbar>
 
   @override
   void dispose() {
+    Debounce.cancel(_debounceKey);
+
+    _toolbarContainer?.remove();
+    _toolbarContainer?.dispose();
+    _toolbarContainer = null;
     editorState.selectionNotifier.removeListener(_onSelectionChanged);
     widget.editorScrollController.offsetNotifier.removeListener(
       _onScrollPositionChanged,
     );
     WidgetsBinding.instance.removeObserver(this);
 
-    _clear();
     _toolbarWidget = null;
 
     super.dispose();
@@ -135,16 +139,23 @@ class _FloatingToolbarState extends State<FloatingToolbar>
   void _onSelectionChanged() {
     final selection = editorState.selection;
     final selectionType = editorState.selectionType;
+
+    final disableToolbar =
+        editorState.selectionExtraInfo?[selectionExtraInfoDisableToolbar] ==
+            true;
+
+    if (disableToolbar) {
+      _clear();
+    }
+
     if (lastSelection == selection) return;
     lastSelection = selection;
 
     if (selection == null ||
         selection.isCollapsed ||
-        selectionType == SelectionType.block ||
-        editorState.selectionExtraInfo?[selectionExtraInfoDisableToolbar] ==
-            true) {
+        selectionType == SelectionType.block) {
       _clear();
-    } else {
+    } else if (!disableToolbar) {
       // uses debounce to avoid the computing the rects too frequently.
       // 300ms (was 200ms, then 400ms; tuned down after user feedback
       // 2026-07-16): a short delay reads as flicker -- the toolbar
@@ -235,6 +246,7 @@ class _FloatingToolbarState extends State<FloatingToolbar>
     if (nodes.isEmpty ||
         nodes.every((node) {
           final delta = node.delta;
+
           return delta == null || delta.isEmpty;
         })) {
       return;
@@ -263,6 +275,7 @@ class _FloatingToolbarState extends State<FloatingToolbar>
     _toolbarContainer = OverlayEntry(
       builder: (context) {
         final child = _buildToolbar(context);
+
         return widget.toolbarBuilder
                 ?.call(context, child, _clear, isMetricsChanged) ??
             Positioned(
@@ -299,6 +312,7 @@ class _FloatingToolbarState extends State<FloatingToolbar>
         placeHolderBuilder: widget.placeHolderBuilder,
       );
     }
+
     return _toolbarWidget!;
   }
 

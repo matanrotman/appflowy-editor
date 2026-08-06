@@ -86,6 +86,7 @@ abstract class AppFlowySelectionService {
   List<Rect> get selectionRects;
 
   void registerGestureInterceptor(SelectionGestureInterceptor interceptor);
+
   void unregisterGestureInterceptor(String key);
 
   /// The functions below are only for mobile.
@@ -93,10 +94,12 @@ abstract class AppFlowySelectionService {
     DragStartDetails details,
     MobileSelectionDragMode mode,
   );
+
   Selection? onPanUpdate(
     DragUpdateDetails details,
     MobileSelectionDragMode mode,
   );
+
   void onPanEnd(
     DragEndDetails details,
     MobileSelectionDragMode mode,
@@ -135,6 +138,7 @@ class SelectionGestureInterceptor {
     required this.key,
     this.canTap,
     this.canDoubleTap,
+    this.canTripleTap,
     this.canPanStart,
     this.canPanUpdate,
     this.canPanEnd,
@@ -144,6 +148,7 @@ class SelectionGestureInterceptor {
 
   bool Function(TapDownDetails details)? canTap;
   bool Function(TapDownDetails details)? canDoubleTap;
+  bool Function(TapDownDetails details)? canTripleTap;
   bool Function(DragStartDetails details)? canPanStart;
   bool Function(DragUpdateDetails details)? canPanUpdate;
   bool Function(DragEndDetails details)? canPanEnd;

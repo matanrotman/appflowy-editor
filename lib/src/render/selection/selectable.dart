@@ -133,8 +133,12 @@ mixin SelectableMixin<T extends StatefulWidget> on State<T> {
       r.topLeft,
       shiftWithBaseOffset: shiftWithBaseOffset,
     );
+
     return Rect.fromLTWH(topLeft.dx, topLeft.dy, r.width, r.height);
   }
 
   TextDirection textDirection() => TextDirection.ltr;
+
+  /// If true, the children will not be sorted when selecting.
+  bool get skipSortingChildrenWhenSelecting => false;
 }

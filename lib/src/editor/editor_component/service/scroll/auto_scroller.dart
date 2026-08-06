@@ -18,11 +18,19 @@ class AutoScroller extends EdgeDraggingAutoScroller
     super.scrollable, {
     super.onScrollViewScrolled,
     super.velocityScalar = _kDefaultAutoScrollVelocityScalar,
+    super.minimumAutoScrollDelta = _kDefaultMinAutoScrollDelta,
+    super.maxAutoScrollDelta = _kDefaultMaxAutoScrollDelta,
+    super.animationDuration,
   });
 
   static const double _kDefaultAutoScrollVelocityScalar = 7;
+  static const double _kDefaultMinAutoScrollDelta = 1.0;
+  static const double _kDefaultMaxAutoScrollDelta = 20.0;
 
   Offset? lastOffset;
+  Duration? lastDuration;
+  double? lastEdgeOffset;
+  AxisDirection? lastDirection;
 
   @override
   void startAutoScroll(
@@ -31,14 +39,24 @@ class AutoScroller extends EdgeDraggingAutoScroller
     AxisDirection? direction,
     Duration? duration,
   }) {
+    lastOffset = offset;
+    lastDuration = duration;
+    lastEdgeOffset = edgeOffset;
+    lastDirection = direction;
     if (direction != null && direction == AxisDirection.up) {
       return startAutoScrollIfNecessary(
-        offset & Size(1, edgeOffset),
+        Rect.fromLTWH(offset.dx, offset.dy - edgeOffset, 1, edgeOffset),
         duration: duration,
       );
     }
 
-    lastOffset = offset;
+    if (direction != null && direction == AxisDirection.down) {
+      return startAutoScrollIfNecessary(
+        Rect.fromLTWH(offset.dx, offset.dy, 1, edgeOffset),
+        duration: duration,
+      );
+    }
+
     final dragTarget = Rect.fromCenter(
       center: offset,
       width: edgeOffset,
@@ -54,12 +72,20 @@ class AutoScroller extends EdgeDraggingAutoScroller
   @override
   void stopAutoScroll() {
     lastOffset = null;
+    lastDuration = null;
+    lastEdgeOffset = null;
+    lastDirection = null;
     super.stopAutoScroll();
   }
 
   void continueToAutoScroll() {
     if (lastOffset != null) {
-      startAutoScroll(lastOffset!);
+      startAutoScroll(
+        lastOffset!,
+        edgeOffset: lastEdgeOffset ?? 200,
+        direction: lastDirection,
+        duration: lastDuration,
+      );
     }
   }
 }

@@ -33,7 +33,7 @@ class _ScrollServiceWidgetState extends State<ScrollServiceWidget>
   @override
   late ScrollController scrollController = ScrollController();
 
-  double offset = 0;
+  Selection? lastSelection;
 
   @override
   void initState() {
@@ -43,6 +43,7 @@ class _ScrollServiceWidgetState extends State<ScrollServiceWidget>
 
   @override
   void dispose() {
+    scrollController.dispose();
     editorState.selectionNotifier.removeListener(_onSelectionChanged);
     super.dispose();
   }
@@ -86,54 +87,111 @@ class _ScrollServiceWidgetState extends State<ScrollServiceWidget>
     // should auto scroll after the cursor or selection updated.
     final selection = editorState.selection;
     if (selection == null ||
-        [SelectionUpdateReason.selectAll, SelectionUpdateReason.searchHighlight]
+        [SelectionUpdateReason.selectAll]
             .contains(editorState.selectionUpdateReason)) {
       return;
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final selectionRect = editorState.selectionRects();
-      final endTouchPoint = selectionRect.lastOrNull?.centerRight;
+      final selectionRects = editorState.selectionRects();
+      if (selectionRects.isEmpty) {
+        return;
+      }
+
+      Rect targetRect;
+      AxisDirection? direction;
+      final dynamic dragMode =
+          editorState.selectionExtraInfo?['selection_drag_mode'];
+
+      // For desktop: if auto-scroller is already scrolling (from drag-to-select),
+      // don't override it here. The desktop_selection_service handles drag scrolling.
+      if (PlatformExtension.isDesktopOrWeb &&
+          (editorState.autoScroller?.scrolling ?? false)) {
+        return;
+      }
+
+      switch (dragMode?.toString()) {
+        case 'MobileSelectionDragMode.leftSelectionHandle':
+          targetRect = selectionRects.first;
+          direction = AxisDirection.up;
+          break;
+
+        case 'MobileSelectionDragMode.rightSelectionHandle':
+          targetRect = selectionRects.last;
+          direction = AxisDirection.down;
+          break;
+
+        case 'MobileSelectionDragMode.cursor':
+          targetRect = selectionRects.last;
+          if (lastSelection != null) {
+            final isMovingUp = selection.end.path < lastSelection!.end.path ||
+                (selection.end.path.equals(lastSelection!.end.path) &&
+                    selection.end.offset < lastSelection!.end.offset);
+            direction = isMovingUp ? AxisDirection.up : AxisDirection.down;
+          }
+          break;
+
+        default:
+          targetRect = selectionRects.last;
+
+          // sometimes moving up in a long single node may be not working
+          // so we need to special handle this case.
+          final isLastSelectionSingle = lastSelection?.isSingle ?? false;
+          final isLastSelectionPathEqual =
+              lastSelection?.start.path.equals(selection.start.path) ?? false;
+          final isInSingleNode =
+              isLastSelectionSingle && isLastSelectionPathEqual;
+          if (selection.isForward && isInSingleNode) {
+            targetRect = selectionRects.first;
+          }
+      }
+
+      lastSelection = selection;
+
+      final endTouchPoint = targetRect.centerRight;
 
       if (PlatformExtension.isMobile) {
+        // Determine if this is a drag operation
+        final bool isDragOperation = dragMode != null &&
+            (dragMode.toString() ==
+                    'MobileSelectionDragMode.leftSelectionHandle' ||
+                dragMode.toString() ==
+                    'MobileSelectionDragMode.rightSelectionHandle' ||
+                dragMode.toString() == 'MobileSelectionDragMode.cursor');
+
+        // Use animation for drag operations, instant for others
+        final scrollDuration =
+            isDragOperation ? const Duration(milliseconds: 2) : Duration.zero;
+
         // soft keyboard
         // workaround: wait for the soft keyboard to show up
-        final duration = KeyboardHeightObserver.currentKeyboardHeight == 0
+        final keyboardDelay = KeyboardHeightObserver.currentKeyboardHeight == 0
             ? const Duration(milliseconds: 250)
             : Duration.zero;
 
-        Future.delayed(duration, () {
+        Future.delayed(keyboardDelay, () {
           if (_forwardKey.currentContext == null) {
             return;
           }
-          if (endTouchPoint == null) {
-            jumpTo(selection.end.path.first);
-          } else {
-            startAutoScroll(
-              endTouchPoint,
-              edgeOffset: editorState.autoScrollEdgeOffset,
-              duration: Duration.zero,
-            );
-          }
+          // Mobile needs to continuously update scroll position/direction during drag
+          // Don't skip even if already scrolling, because direction may have changed
+          startAutoScroll(
+            endTouchPoint,
+            edgeOffset: editorState.autoScrollEdgeOffset,
+            direction: direction,
+            duration: scrollDuration,
+          );
         });
       } else {
         if (_forwardKey.currentContext == null) {
           return;
         }
-        if (endTouchPoint == null) {
-          // check if the selection is valid
-          final node = editorState.getNodeAtPath(selection.end.path);
-          if (node == null) {
-            return;
-          }
-          jumpTo(selection.end.path.first);
-        } else {
-          startAutoScroll(
-            endTouchPoint,
-            edgeOffset: editorState.autoScrollEdgeOffset,
-            duration: Duration.zero,
-          );
-        }
+        startAutoScroll(
+          endTouchPoint,
+          edgeOffset: editorState.autoScrollEdgeOffset,
+          direction: direction,
+          duration: Duration.zero,
+        );
       }
     });
   }

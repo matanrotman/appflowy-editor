@@ -5,6 +5,8 @@ import 'package:appflowy_editor/src/plugins/markdown/decoder/custom_syntaxes/und
 import 'package:collection/collection.dart';
 import 'package:markdown/markdown.dart' as md;
 
+import 'custom_syntaxes/formula_syntax.dart';
+
 class DocumentMarkdownDecoder extends Converter<String, Document> {
   DocumentMarkdownDecoder({
     this.markdownElementParsers = const [],
@@ -21,6 +23,7 @@ class DocumentMarkdownDecoder extends Converter<String, Document> {
       extensionSet: md.ExtensionSet.gitHubFlavored,
       inlineSyntaxes: [
         ...inlineSyntaxes,
+        FormulaInlineSyntax(),
         UnderlineInlineSyntax(),
       ],
       encodeHtml: false,
@@ -71,6 +74,7 @@ class DocumentMarkdownDecoder extends Converter<String, Document> {
         final text = match[1] ?? '';
         final altText = match[2] ?? '';
         final url = match[3] ?? '';
+
         return '$text\n\n![$altText]($url)';
       },
     );

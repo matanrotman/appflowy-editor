@@ -46,6 +46,7 @@ class BulletedListBlockComponentBuilder extends BlockComponentBuilder {
   @override
   BlockComponentWidget build(BlockComponentContext blockComponentContext) {
     final node = blockComponentContext.node;
+
     return BulletedListBlockComponentWidget(
       key: node.key,
       node: node,
@@ -165,12 +166,10 @@ class _BulletedListBlockComponentWidgetState
     );
 
     child = Container(
-      color: withBackgroundColor ? backgroundColor : null,
-      child: Padding(
-        key: blockComponentKey,
-        padding: padding,
-        child: child,
-      ),
+      decoration: withBackgroundColor ? decoration : null,
+      key: blockComponentKey,
+      padding: padding,
+      child: child,
     );
 
     child = BlockSelectionContainer(
@@ -223,6 +222,7 @@ class _BulletedListIcon extends StatelessWidget {
       }
       parent = parent.parent;
     }
+
     return level;
   }
 
@@ -232,6 +232,7 @@ class _BulletedListIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     final textScaleFactor =
         context.read<EditorState>().editorStyle.textScaleFactor;
+
     return Container(
       constraints:
           const BoxConstraints(minWidth: 26, minHeight: 22) * textScaleFactor,
