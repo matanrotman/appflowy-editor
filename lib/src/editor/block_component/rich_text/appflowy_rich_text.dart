@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math';
 import 'dart:ui';
 
@@ -532,6 +533,13 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     if (VisualCaretTraversal.resolveClicksVisually) {
       final visual = _visualPositionForOffset(offset);
       if (visual != null) {
+        final text = widget.node.delta?.toPlainText() ?? '';
+        _richTextProbe(
+          'getPositionInOffset VISUAL localOffset=$offset '
+          '=> offset=${visual.offset} '
+          'charAtOffset=${visual.offset < text.length ? text[visual.offset] : "EOF"} '
+          'charBeforeOffset=${visual.offset > 0 ? text[visual.offset - 1] : "BOF"}',
+        );
         return visual;
       }
     }
@@ -645,6 +653,13 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     final currentY = position is VisualCaretPosition
         ? position.visualLocalOffset.dy
         : caretOffset.dy;
+    _richTextProbe(
+      'getNextVisualCaretPosition ENTRY byWord=$byWord towardsLeft=$towardsLeft '
+      'position.offset=${position.offset} position.type=${position.runtimeType} '
+      'currentX=$currentX currentY=$currentY '
+      'charAtOffset=${position.offset < text.length ? text[position.offset] : "EOF"} '
+      'charBeforeOffset=${position.offset > 0 ? text[position.offset - 1] : "BOF"}',
+    );
 
     // The per-character boxes of the caret's OWN visual line, each kept with
     // its character offset.
@@ -992,11 +1007,28 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       return null;
     }
 
+    _richTextProbe(
+      'getNextVisualCaretPosition RETURN nextX=$nextX landingLine=$landingLine '
+      'offset=$offset charAtOffset=${offset < text.length ? text[offset] : "EOF"} '
+      'charBeforeOffset=${offset > 0 ? text[offset - 1] : "BOF"}',
+    );
+
     return VisualCaretPosition(
       path: widget.node.path,
       offset: offset,
       visualLocalOffset: Offset(nextX, caretY(landingLine)),
     );
+  }
+
+  /// Temporary probe (session 24 follow-up) — logs to
+  /// ~/Desktop/ludwig_caret_probe.log. Remove before shipping.
+  static void _richTextProbe(String message) {
+    try {
+      File('${Platform.environment['HOME']}/Desktop/ludwig_caret_probe.log')
+          .writeAsStringSync('$message\n', mode: FileMode.append);
+    } catch (_) {
+      // best-effort only
+    }
   }
 
   @override
