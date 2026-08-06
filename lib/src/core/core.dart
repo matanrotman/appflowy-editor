@@ -1,4 +1,10 @@
 export 'document/attributes.dart';
+// Kept despite upstream deprecating and deleting these (session-24 sync) --
+// Ludwig's legacy-AppFlowy-JSON import feature (EditorMigration) still
+// depends on NodeV0/TextNodeV0 to parse the old document format. No
+// upstream replacement exists; this format simply predates the current one.
+export 'document/deprecated/document.dart';
+export 'document/deprecated/node.dart';
 export 'document/diff.dart';
 export 'document/document.dart';
 export 'document/node.dart';
