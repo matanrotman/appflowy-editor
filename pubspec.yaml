@@ -25,7 +25,10 @@ dependencies:
   flutter_svg: "^2.0.6"
   html: ^0.15.5
   http: "^1.2.0"
-  intl: "^0.20.2"
+  # Lowered from the upstream "^0.20.2" bump (same session-24 sync note as
+  # the flutter: floor above) — Ludwig's app pins intl ^0.19.0, and nothing
+  # merged in actually uses a newer intl API.
+  intl: "^0.19.0"
   keyboard_height_plugin: "^0.1.5"
   logging: "^1.2.0"
   markdown: "^7.2.1"
