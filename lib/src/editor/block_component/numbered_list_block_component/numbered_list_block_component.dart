@@ -182,10 +182,12 @@ class _NumberedListBlockComponentWidgetState
     );
 
     child = Container(
-      key: blockComponentKey,
-      decoration: withBackgroundColor ? decoration : null,
-      padding: padding,
-      child: child,
+      color: withBackgroundColor ? backgroundColor : null,
+      child: Padding(
+        key: blockComponentKey,
+        padding: padding,
+        child: child,
+      ),
     );
 
     child = BlockSelectionContainer(

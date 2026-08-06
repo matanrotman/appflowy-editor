@@ -191,10 +191,12 @@ class _HeadingBlockComponentWidgetState
       child: child,
     );
 
-    child = Container(
+    child = Padding(
       padding: padding,
-      decoration: decoration,
-      child: child,
+      child: Container(
+        color: backgroundColor,
+        child: child,
+      ),
     );
 
     if (widget.showActions && widget.actionBuilder != null) {

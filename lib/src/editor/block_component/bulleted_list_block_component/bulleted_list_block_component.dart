@@ -166,10 +166,12 @@ class _BulletedListBlockComponentWidgetState
     );
 
     child = Container(
-      decoration: withBackgroundColor ? decoration : null,
-      key: blockComponentKey,
-      padding: padding,
-      child: child,
+      color: withBackgroundColor ? backgroundColor : null,
+      child: Padding(
+        key: blockComponentKey,
+        padding: padding,
+        child: child,
+      ),
     );
 
     child = BlockSelectionContainer(

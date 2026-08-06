@@ -3,28 +3,27 @@ import 'package:flutter/material.dart';
 
 /// If you want to customize the logic of how to convert a color string to a
 ///   [Color], you can set this variable.
-typedef BlockComponentBackgroundColorDecorator = Decoration? Function(
+typedef BlockComponentBackgroundColorDecorator = Color? Function(
   Node node,
   String colorString,
 );
-BlockComponentBackgroundColorDecorator? blockComponentDecorator;
+BlockComponentBackgroundColorDecorator? blockComponentBackgroundColorDecorator;
 
 mixin BlockComponentBackgroundColorMixin {
   Node get node;
 
-  Decoration? get decoration {
+  Color get backgroundColor {
     final colorString =
         node.attributes[blockComponentBackgroundColor] as String?;
     if (colorString == null) {
-      return null;
+      return Colors.transparent;
     }
 
-    return blockComponentDecorator?.call(
+    return blockComponentBackgroundColorDecorator?.call(
           node,
           colorString,
         ) ??
-        BoxDecoration(
-          color: colorString.tryToColor(),
-        );
+        colorString.tryToColor() ??
+        Colors.transparent;
   }
 }

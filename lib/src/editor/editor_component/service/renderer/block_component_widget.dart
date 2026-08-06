@@ -139,7 +139,7 @@ mixin NestedBlockComponentStatefulWidgetMixin<
         Positioned.fill(
           left: cachedLeft,
           child: Container(
-            decoration: decoration,
+            color: backgroundColor,
           ),
         ),
         NestedListWidget(
