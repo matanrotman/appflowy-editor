@@ -35,6 +35,27 @@ class VisualCaretTraversal {
   /// generous without ever merging two of them.
   static const double lineEpsilon = 0.1;
 
+  /// Whether mouse clicks (single click, double-click word-select,
+  /// drag-select, shift-click extend) resolve position via this same
+  /// visual-stop model, instead of trusting Flutter's own bidi hit-testing
+  /// (`getPositionForOffset`, `getWordBoundary`).
+  ///
+  /// ⚠️ An experiment behind a switch, per `specs/bidi-caret-movement.md`'s
+  /// "Click positioning" scoping (session 24) in the Ludwig repo. Off keeps
+  /// today's click behaviour exactly — including its known bug, where a click
+  /// past a wrapped line's true end or past the page margin can resolve to an
+  /// unrelated offset elsewhere in the paragraph. On resolves every click via
+  /// the caret's own visual-line/visual-stop model instead.
+  ///
+  /// A previous attempt at a narrower fix (redirecting only the specific
+  /// overshoot case) passed every automated test, including on the real
+  /// macOS window, and still broke clicking broadly once shipped live — this
+  /// flag exists so the wider fix can be compared against the old behaviour
+  /// without that risk repeating.
+  ///
+  /// Set by the host app; the editor never persists it.
+  static bool resolveClicksVisually = false;
+
   /// The glyph boxes of [boxes] grouped into visual lines, top-most first.
   ///
   /// `boxes[i]` is the box of the character at `offsets[i]`. Characters

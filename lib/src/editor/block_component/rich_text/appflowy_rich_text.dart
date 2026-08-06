@@ -397,9 +397,119 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     return rect;
   }
 
+  /// Resolves a click/drag pixel to a position using the same visual-stop
+  /// model arrow-key movement already walks by, instead of trusting
+  /// Flutter's own `getPositionForOffset`/`getWordBoundary` bidi hit-testing.
+  ///
+  /// See `specs/bidi-caret-movement.md`'s "Click positioning" section in the
+  /// Ludwig repo for the full scoping. Short version: Flutter's hit-testing
+  /// can resolve a click past a wrapped line's true end, or past the page
+  /// margin, to an unrelated offset elsewhere in the paragraph — measured
+  /// landing on a parenthesis character far from the click. This instead
+  /// finds the click's nearest VISUAL LINE by y, then its nearest VISUAL STOP
+  /// on that line by x — the same two steps `getNextVisualCaretPosition`
+  /// already takes, just without a seed offset to grow outward from, since a
+  /// fresh click has no "current position" to start from. Building every
+  /// line in one pass instead of seeding-and-growing is deliberately fine
+  /// here: unlike arrow-key repeat, a click is not a per-frame hot path.
+  ///
+  /// Returns null when there is nothing to resolve (empty text, no layout
+  /// yet) — callers fall back to the pre-existing Flutter-based path.
+  VisualCaretPosition? _visualPositionForOffset(Offset localOffset) {
+    final paragraph = _renderParagraph;
+    final text = widget.node.delta?.toPlainText();
+    if (paragraph == null || text == null || text.isEmpty) {
+      return null;
+    }
+
+    TextBox? boxAt(int offset) {
+      if (offset < 0 || offset >= text.length) return null;
+      final charBoxes = paragraph.getBoxesForSelection(
+        TextSelection(baseOffset: offset, extentOffset: offset + 1),
+      );
+      return charBoxes.isEmpty ? null : charBoxes.first;
+    }
+
+    final boxes = <TextBox>[];
+    final offsets = <int>[];
+    for (var i = 0; i < text.length; i++) {
+      final box = boxAt(i);
+      if (box == null) continue;
+      boxes.add(box);
+      offsets.add(i);
+    }
+    final lines = VisualCaretTraversal.groupIntoLines(boxes, offsets);
+    if (lines.isEmpty) {
+      return null;
+    }
+
+    // The y the RENDERER draws a caret at, per line — see the identical
+    // comment in getNextVisualCaretPosition for why this, and not a
+    // "nearest vertical band" match against the glyph boxes themselves.
+    double caretYOf(VisualLine line) => paragraph
+        .getOffsetForCaret(
+          TextPosition(
+            offset: line.offsets.last,
+            affinity: TextAffinity.upstream,
+          ),
+          Rect.zero,
+        )
+        .dy;
+
+    var lineIndex = 0;
+    var bestDistance = (caretYOf(lines[0]) - localOffset.dy).abs();
+    for (var i = 1; i < lines.length; i++) {
+      final distance = (caretYOf(lines[i]) - localOffset.dy).abs();
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        lineIndex = i;
+      }
+    }
+
+    final line = lines[lineIndex];
+    final stops = VisualCaretTraversal.stopsForLine(
+      line.boxes,
+      line.offsets,
+      text,
+      isBlockFinalLine: lineIndex == lines.length - 1,
+    );
+    if (stops.isEmpty) {
+      return null;
+    }
+
+    final nearestStop = stops.reduce(
+      (a, b) => (a - localOffset.dx).abs() < (b - localOffset.dx).abs()
+          ? a
+          : b,
+    );
+    final resolvedOffset = VisualCaretTraversal.restingOffset(
+      line.boxes,
+      nearestStop,
+      paragraphDirection: textDirection(),
+      offsets: line.offsets,
+    );
+    if (resolvedOffset == null) {
+      return null;
+    }
+
+    return VisualCaretPosition(
+      path: widget.node.path,
+      offset: resolvedOffset,
+      visualLocalOffset: Offset(nearestStop, caretYOf(line)),
+    );
+  }
+
   @override
   Position getPositionInOffset(Offset start) {
     final offset = _renderParagraph?.globalToLocal(start) ?? Offset.zero;
+
+    if (VisualCaretTraversal.resolveClicksVisually) {
+      final visual = _visualPositionForOffset(offset);
+      if (visual != null) {
+        return visual;
+      }
+    }
+
     final textPosition = _renderParagraph?.getPositionForOffset(offset);
     if (textPosition == null) {
       return Position(path: widget.node.path, offset: -1);
@@ -417,14 +527,30 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     );
   }
 
+  /// The offset a click at [localOffset] lands on, per
+  /// [VisualCaretTraversal.resolveClicksVisually] when it is on, otherwise
+  /// Flutter's own hit-test — the shared first step of [getWordEdgeInOffset]
+  /// and [getWordBoundaryInOffset]. Word-boundary math itself
+  /// (`getWordBoundary`) operates on the logical string and is not the bidi
+  /// bug; only feeding it the wrong starting offset is.
+  int _hitTestOffset(Offset localOffset) {
+    if (VisualCaretTraversal.resolveClicksVisually) {
+      final visual = _visualPositionForOffset(localOffset);
+      if (visual != null) {
+        return visual.offset;
+      }
+    }
+    return _renderParagraph?.getPositionForOffset(localOffset).offset ?? 0;
+  }
+
   @override
   Selection? getWordEdgeInOffset(Offset offset) {
     final localOffset = _renderParagraph?.globalToLocal(offset) ?? Offset.zero;
-    final textPosition = _renderParagraph?.getPositionForOffset(localOffset) ??
-        const TextPosition(offset: 0);
-    final textRange =
-        _renderParagraph?.getWordBoundary(textPosition) ?? TextRange.empty;
-    final wordEdgeOffset = textPosition.offset <= textRange.start
+    final hitTestOffset = _hitTestOffset(localOffset);
+    final textRange = _renderParagraph
+            ?.getWordBoundary(TextPosition(offset: hitTestOffset)) ??
+        TextRange.empty;
+    final wordEdgeOffset = hitTestOffset <= textRange.start
         ? textRange.start
         : textRange.end;
 
@@ -436,10 +562,10 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
   @override
   Selection? getWordBoundaryInOffset(Offset offset) {
     final localOffset = _renderParagraph?.globalToLocal(offset) ?? Offset.zero;
-    final textPosition = _renderParagraph?.getPositionForOffset(localOffset) ??
-        const TextPosition(offset: 0);
-    final textRange =
-        _renderParagraph?.getWordBoundary(textPosition) ?? TextRange.empty;
+    final hitTestOffset = _hitTestOffset(localOffset);
+    final textRange = _renderParagraph
+            ?.getWordBoundary(TextPosition(offset: hitTestOffset)) ??
+        TextRange.empty;
     final start = Position(path: widget.node.path, offset: textRange.start);
     final end = Position(path: widget.node.path, offset: textRange.end);
 
@@ -951,15 +1077,21 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     }
     final localStart = _renderParagraph?.globalToLocal(start) ?? Offset.zero;
     final localEnd = _renderParagraph?.globalToLocal(end) ?? Offset.zero;
-    final baseOffset =
-        _renderParagraph?.getPositionForOffset(localStart).offset ?? -1;
-    final extentOffset =
-        _renderParagraph?.getPositionForOffset(localEnd).offset ?? -1;
+
+    int resolve(Offset local) {
+      if (VisualCaretTraversal.resolveClicksVisually) {
+        final visual = _visualPositionForOffset(local);
+        if (visual != null) {
+          return visual.offset;
+        }
+      }
+      return _renderParagraph?.getPositionForOffset(local).offset ?? -1;
+    }
 
     return Selection.single(
       path: widget.node.path,
-      startOffset: baseOffset,
-      endOffset: extentOffset,
+      startOffset: resolve(localStart),
+      endOffset: resolve(localEnd),
     );
   }
 
