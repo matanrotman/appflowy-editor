@@ -543,12 +543,55 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     // direction-default resolution when the click doesn't land inside any
     // glyph's box at all (a true gap between stops, e.g. past a line's end
     // or past the page margin) — that case is unaffected and already tested.
+    //
+    // ⚠️ A mirrored punctuation mark (a paren, here) is typically much
+    // NARROWER than an ordinary letter, and sits with NO gap against the
+    // content it's paired with — measured: "(" is 5.1px wide, touching
+    // "polites" 's final "s" (7.9px) with zero gap between them. A raw click
+    // aimed at "just past polites" has a real chance of landing a couple of
+    // pixels into that adjacent 5px paren instead — plain click imprecision,
+    // not a wrong intention. Measured live (session 24 follow-up): trusting
+    // raw containment alone here still resolved to the paren's own side on a
+    // second, slightly-different click. So: when the containing box is part
+    // of an ambiguous tie (an adjacent, oppositely-directioned box shares its
+    // near edge) AND is markedly narrower than that neighbour, prefer the
+    // WIDER neighbour's interpretation instead of trusting raw containment —
+    // a human aiming near a narrow mirrored mark is far more likely aiming
+    // at the word beside it than at the mark itself.
     int? offsetFromContainingBox() {
       for (var i = 0; i < line.boxes.length; i++) {
         final box = line.boxes[i];
         if (localOffset.dx < box.left || localOffset.dx > box.right) {
           continue;
         }
+
+        for (var j = 0; j < line.boxes.length; j++) {
+          if (j == i) continue;
+          final other = line.boxes[j];
+          if (other.direction == box.direction) continue;
+          final otherIsLtr = other.direction == TextDirection.ltr;
+          final otherStart = line.offsets[j];
+          final otherEnd = otherStart + 1;
+          final sharesNearEdgeOnLeft =
+              (other.right - box.left).abs() <= VisualCaretTraversal.epsilon;
+          final sharesNearEdgeOnRight =
+              (other.left - box.right).abs() <= VisualCaretTraversal.epsilon;
+          if (!sharesNearEdgeOnLeft && !sharesNearEdgeOnRight) continue;
+          final boxWidth = box.right - box.left;
+          final otherWidth = other.right - other.left;
+          if (otherWidth <= boxWidth * 1.5) continue;
+
+          if (sharesNearEdgeOnLeft) {
+            // `box`'s left edge = `other`'s right edge: this is `other`'s
+            // right edge, per sidesAt's own touchesRight convention.
+            return otherIsLtr ? otherEnd : otherStart;
+          } else {
+            // `box`'s right edge = `other`'s left edge: `other`'s left edge,
+            // per sidesAt's touchesLeft convention.
+            return otherIsLtr ? otherStart : otherEnd;
+          }
+        }
+
         final closerToLeft =
             (localOffset.dx - box.left) < (box.right - localOffset.dx);
         final isLtr = box.direction == TextDirection.ltr;
