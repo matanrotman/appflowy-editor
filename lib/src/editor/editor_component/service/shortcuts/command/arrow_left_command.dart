@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/material.dart';
 
@@ -113,14 +111,6 @@ bool extendSelectionVisually(
     byWord: byWord,
     toLineEdge: toLineEdge,
   );
-  _probe(
-    'extendSelectionVisually byWord=$byWord towardsLeft=$towardsLeft '
-    'selection.start=${selection.start.offset} selection.end=${selection.end.offset} '
-    'extent.type=${extent.runtimeType} '
-    'extent.visualDx=${extent is VisualCaretPosition ? extent.visualLocalOffset.dx : "n/a"} '
-    '=> next.offset=${next?.offset} next.type=${next?.runtimeType} '
-    'next.visualDx=${next is VisualCaretPosition ? next.visualLocalOffset.dx : "n/a"}',
-  );
   if (next == null) {
     return false;
   }
@@ -129,17 +119,6 @@ bool extendSelectionVisually(
     reason: SelectionUpdateReason.uiEvent,
   );
   return true;
-}
-
-/// Temporary probe (session 24 follow-up) — logs to
-/// ~/Desktop/ludwig_caret_probe.log. Remove before shipping.
-void _probe(String message) {
-  try {
-    File('${Platform.environment['HOME']}/Desktop/ludwig_caret_probe.log')
-        .writeAsStringSync('$message\n', mode: FileMode.append);
-  } catch (_) {
-    // best-effort only
-  }
 }
 
 // arrow left key + ctrl or command
