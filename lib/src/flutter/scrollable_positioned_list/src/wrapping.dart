@@ -946,7 +946,10 @@ abstract class CustomRenderViewport
   @override
   void applyPaintTransform(RenderObject child, Matrix4 transform) {
     final Offset offset = paintOffsetOf(child as RenderSliver);
-    transform.leftTranslateByDouble(offset.dx, offset.dy, 0.0, 1.0);
+    // Kept as the deprecated .translate() rather than leftTranslateByDouble()
+    // — that replacement needs a vector_math version only bundled with
+    // Flutter 3.32+; Ludwig's installed Flutter is 3.27.4.
+    transform.translate(offset.dx, offset.dy);
   }
 
   @override

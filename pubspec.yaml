@@ -6,7 +6,11 @@ homepage: "https://github.com/AppFlowy-IO/appflowy-editor"
 
 environment:
   sdk: ">=3.6.0 <4.0.0"
-  flutter: ">=3.32.0"
+  # Lowered back from the upstream ">=3.32.0" floor (session-24 upstream
+  # sync) — Ludwig's installed Flutter is 3.27.4, and nothing merged in
+  # that sync actually needs a newer engine. Re-evaluate if a future merge
+  # brings in a real 3.32+ API dependency, not just a version-bump commit.
+  flutter: ">=3.27.0"
 
 description: A highly customizable rich-text editor for Flutter. The AppFlowy
   Editor project for AppFlowy and beyond.
