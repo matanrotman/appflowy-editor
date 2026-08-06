@@ -453,7 +453,8 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
         if (offsets[i] >= 125 && offsets[i] <= 155) {
           dump.add(
             '${offsets[i]}:${text[offsets[i]]}='
-            '[${boxes[i].left.toStringAsFixed(1)},${boxes[i].right.toStringAsFixed(1)}]',
+            '[${boxes[i].left.toStringAsFixed(1)},${boxes[i].right.toStringAsFixed(1)}]'
+            '${boxes[i].direction == TextDirection.rtl ? "RTL" : "LTR"}',
           );
         }
       }
@@ -531,6 +532,18 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       paragraphDirection: textDirection(),
       offsets: line.offsets,
     );
+    if (localOffset.dx > 700 && localOffset.dx < 950) {
+      final sides = VisualCaretTraversal.sidesAt(
+        line.boxes,
+        nearestStop,
+        offsets: line.offsets,
+      );
+      _richTextProbe(
+        'RESTING-OFFSET-DECISION clickX=${localOffset.dx} nearestStop=$nearestStop '
+        'sidesAt.rtl=${sides.rtl} sidesAt.ltr=${sides.ltr} '
+        'paragraphDirection=${textDirection()} resolvedOffset=$resolvedOffset',
+      );
+    }
     if (resolvedOffset == null) {
       return null;
     }
