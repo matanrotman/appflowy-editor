@@ -52,5 +52,9 @@ class AppFlowyRichTextKeys {
     backgroundColor,
     superscript,
     subscript,
+    // Ludwig's ribbon font-size control sets a pending size at a bare caret.
+    // Without this entry onInsert's debug assertion threw on the next keystroke
+    // and silently dropped it (2026-09-26).
+    fontSize,
   ];
 }
