@@ -727,6 +727,7 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
         ? position.visualLocalOffset.dy
         : caretOffset.dy;
 
+
     // The per-character boxes of the caret's OWN visual line, each kept with
     // its character offset.
     //
@@ -991,9 +992,52 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       }).toList();
     }
 
+    /// Among [candidateStops] on line [lineIdx], the one whose resting offset
+    /// is NEAREST to [position.offset] while still on the [wantSmaller] side
+    /// of it. Shared by the same-line tie-fallback and the cross-line search
+    /// below — both are the same question ("what's the next word/segment
+    /// start in this offset-direction, regardless of which x it happens to
+    /// render at") asked of a different line's stops.
+    double? nearestStopByOffset(
+      int lineIdx,
+      List<double> candidateStops,
+      bool wantSmaller,
+    ) {
+      double? bestX;
+      int? bestOffset;
+      for (final stop in candidateStops) {
+        final resting = offsetForStop(lines[lineIdx], stop);
+        if (resting == null) continue;
+        final isCandidate = wantSmaller
+            ? resting < position.offset
+            : resting > position.offset;
+        if (!isCandidate) continue;
+        final isNearer = bestOffset == null ||
+            (wantSmaller ? resting > bestOffset : resting < bestOffset);
+        if (isNearer) {
+          bestOffset = resting;
+          bestX = stop;
+        }
+      }
+      return bestX;
+    }
+
     var landingLine = lineIndex;
     double? nextX;
     final stops = stopsOnLine(lineIndex);
+
+    // A word jump through a mirrored-punctuation tie commits to an
+    // offset-direction, carried on the returned VisualCaretPosition — see
+    // VisualCaretPosition.wordJumpCommittedDecreasing. Read back whatever the
+    // PREVIOUS word jump in this same gesture (same towardsLeft) committed
+    // to; stays null until the first tie is actually crossed.
+    bool? committedDecreasing;
+    if (byWord &&
+        position is VisualCaretPosition &&
+        position.wordJumpCommittedTowardsLeft == towardsLeft) {
+      committedDecreasing = position.wordJumpCommittedDecreasing;
+    }
+
     if (toLineEdge) {
       if (stops.isNotEmpty) {
         final edge = towardsLeft ? stops.first : stops.last;
@@ -1007,6 +1051,73 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
         currentX,
         towardsLeft: towardsLeft,
       );
+
+      // Once committed (below), a plain x-nearest step can still find a
+      // "valid" stop that undoes the commitment — measured live (2026-08-06,
+      // the "polites/spoudaios/(" loop): from the far side of the "(" tie,
+      // the nearest x-stop resolves right back through the SAME tie to the
+      // offset we already committed to leaving, because that offset's OTHER
+      // side is, pixel-wise, a perfectly ordinary-looking word start. Nothing
+      // marks it as backward except that we said which way we were going.
+      // Discarding it here — before it ever reaches the tie-fallback below —
+      // is what turns the loop into forward progress.
+      if (byWord && committedDecreasing != null && nextX != null) {
+        final naiveOffset = offsetForStop(lines[lineIndex], nextX);
+        final violatesCommitment = naiveOffset == null ||
+            (committedDecreasing
+                ? naiveOffset >= position.offset
+                : naiveOffset <= position.offset);
+        if (violatesCommitment) {
+          nextX = null;
+        }
+      }
+
+      // A word jump can dead-end at a MIRRORED-PUNCTUATION tie even though the
+      // sentence keeps going — measured live (2026-08-06, the "polites" loop):
+      // standing at the start of an embedded LTR run ("spoudaios"), the stops
+      // still ahead in x (a mirrored "(" and the Hebrew beyond it) all sit at
+      // HIGHER x, because the run's own boundary is where visual x and logical
+      // offset stop agreeing. `step()` only ever searches one x-direction, so
+      // it reports the line exhausted and falls through to the block-edge
+      // branch below — silently discarding real content on the SAME line.
+      //
+      // Once a commitment already exists (a previous step already crossed a
+      // tie in this gesture), trust it directly instead of re-deriving —
+      // re-deriving from [currentX] alone is exactly what let the loop back
+      // in above. Otherwise (the FIRST tie this gesture crosses), derive it
+      // from [currentX]: `sidesAt` returns two DIFFERENT offsets for the
+      // position we are standing on (one per direction), and
+      // [position.offset] is necessarily one of them — whichever side we did
+      // NOT arrive by is where the paragraph's own text actually continues.
+      //
+      // Either way, "next" is no longer an x question from here — it is the
+      // nearest remaining stop on this line whose offset is on the correct
+      // side of [position.offset]. This only ever fires after the ordinary
+      // x-search has already failed (or been discarded above), and only ever
+      // finds a candidate when a tie is actually present, so it cannot change
+      // any case that already worked — a true line/block edge (no tie, no
+      // commitment) simply yields no candidate here.
+      if (nextX == null && byWord) {
+        final bool wantsSmallerOffset;
+        if (committedDecreasing != null) {
+          wantsSmallerOffset = committedDecreasing;
+        } else {
+          final currentSides = VisualCaretTraversal.sidesAt(
+            lines[lineIndex].boxes,
+            currentX,
+            offsets: lines[lineIndex].offsets,
+          );
+          final arrivedViaLtr = currentSides.ltr == position.offset &&
+              currentSides.rtl != position.offset;
+          wantsSmallerOffset = arrivedViaLtr == towardsLeft;
+        }
+        final fallbackX =
+            nearestStopByOffset(lineIndex, stops, wantsSmallerOffset);
+        if (fallbackX != null) {
+          nextX = fallbackX;
+          committedDecreasing = wantsSmallerOffset;
+        }
+      }
 
       if (nextX == null) {
         // The line's visual edge. Cross to the neighbouring line HERE rather
@@ -1022,12 +1133,30 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
         // side — leftward movement lands on the target line's rightmost stop —
         // which is what wrapping around a line looks like.
         //
+        // ⚠️ That formula assumes towardsLeft always means the same offset
+        // direction — true for ordinary text, false once a word jump has
+        // committed to an offset-direction that DISAGREES with towardsLeft's
+        // usual meaning (see wordJumpCommittedDecreasing). Measured live
+        // (2026-08-07): stuck at the FAR side of the "polites" tie, still
+        // committed to decreasing offset, this formula sent the search to the
+        // line BELOW — but a wrapped paragraph's lines run top-to-bottom in
+        // LOGICAL order regardless of paragraph direction, so smaller offsets
+        // are always on an EARLIER (lower-index) line. Searching below found
+        // nothing (there is nothing there), reported the block exhausted, and
+        // handed off to the old pre-bidi fallback — which promptly landed
+        // somewhere with no relation to the selection built so far. A
+        // committed word jump overrides the formula with the one that is
+        // actually true: decreasing wants the line above, increasing wants
+        // the line below.
+        //
         // Neighbouring lines are measured one at a time, and only when the
         // caret actually reaches an edge, so the ordinary keypress in the
         // middle of a line still measures exactly one line.
-        final step = towardsLeft
-            ? (paragraphIsRtl ? 1 : -1)
-            : (paragraphIsRtl ? -1 : 1);
+        final step = (byWord && committedDecreasing != null)
+            ? (committedDecreasing ? -1 : 1)
+            : (towardsLeft
+                ? (paragraphIsRtl ? 1 : -1)
+                : (paragraphIsRtl ? -1 : 1));
         var i = lineIndex + step;
         while (true) {
           if (i < 0 || i >= lines.length) {
@@ -1052,7 +1181,21 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
           // A word jump can find no stop at all on a line it passes over, so
           // keep going rather than stalling there.
           final candidates = stopsOnLine(i);
-          if (candidates.isNotEmpty) {
+          // Committed: the landing stop is an offset question, same as the
+          // same-line tie-fallback above, not "whichever edge of the new
+          // line" — a line can hold more than one word, and the one we want
+          // is whichever is nearest to where we already are, not the line's
+          // geometric extreme (which, past a mirrored tie, can be the wrong
+          // word entirely).
+          if (byWord && committedDecreasing != null) {
+            final committedX =
+                nearestStopByOffset(i, candidates, committedDecreasing);
+            if (committedX != null) {
+              nextX = committedX;
+              landingLine = i;
+              break;
+            }
+          } else if (candidates.isNotEmpty) {
             nextX = towardsLeft ? candidates.last : candidates.first;
             landingLine = i;
             break;
@@ -1077,6 +1220,8 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
       path: widget.node.path,
       offset: offset,
       visualLocalOffset: Offset(nextX, caretY(landingLine)),
+      wordJumpCommittedDecreasing: committedDecreasing,
+      wordJumpCommittedTowardsLeft: committedDecreasing != null ? towardsLeft : null,
     );
   }
 

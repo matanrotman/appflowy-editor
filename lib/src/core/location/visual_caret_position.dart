@@ -28,6 +28,8 @@ class VisualCaretPosition extends Position {
     required super.path,
     required super.offset,
     required this.visualLocalOffset,
+    this.wordJumpCommittedDecreasing,
+    this.wordJumpCommittedTowardsLeft,
   });
 
   /// Where the caret sits, in the render paragraph's local coordinates.
@@ -36,4 +38,25 @@ class VisualCaretPosition extends Position {
   /// offset by the renderer, which already handles line height and the
   /// empty-line placeholder correctly.
   final Offset visualLocalOffset;
+
+  /// Set once a word jump has had to cross a mirrored-punctuation tie (see
+  /// `getNextVisualCaretPosition`'s tie-fallback), and carried forward on
+  /// every subsequent word jump in the same direction — the offset-decrease
+  /// sense that jump committed to, so later steps cannot wander back through
+  /// the same tie and loop.
+  ///
+  /// Measured 2026-08-06 (the "polites/spoudaios/(" loop): without this, a
+  /// pure x-nearest search happily re-enters an offset it already passed,
+  /// because the mirrored bracket's OTHER side resolves to that same offset
+  /// at a completely different x — a fresh, correct-looking stop with no way
+  /// to know it is backward. Null means "no word jump has crossed a tie yet
+  /// in this gesture" — ordinary x-based stepping, unchanged.
+  final bool? wordJumpCommittedDecreasing;
+
+  /// The `towardsLeft` value in effect when [wordJumpCommittedDecreasing] was
+  /// set. Reversing direction mid-gesture (the user switches from
+  /// Option+Shift+Left to Option+Shift+Right) makes the old commitment stale
+  /// — it describes a trip that is no longer happening — so it is only
+  /// honoured while `towardsLeft` keeps matching this value.
+  final bool? wordJumpCommittedTowardsLeft;
 }
